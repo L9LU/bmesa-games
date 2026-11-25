@@ -1,0 +1,298 @@
+import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { useData, useTick } from '../app-context.jsx';
+import { FixtureRow, Loading, MedalsTable, Shirt, TeamLogo, TeamName } from '../components.jsx';
+import { countdown, dayKey, fmtDay, fmtShort, teamSide } from '../lib.js';
+
+const CATS = ['Football', 'Basketball', 'Volleyball', 'Badminton', 'Track', 'Indoor', 'Esports'];
+const useHub = (refreshSec = 30) => useData('/api/hub', { refreshSec });
+
+function Countdown({ to }) {
+  useTick();
+  const c = countdown(to);
+  return (
+    <div className="countdown">
+      {[['d', 'Days'], ['h', 'Hours'], ['m', 'Mins'], ['s', 'Secs']].map(([k, l]) => (
+        <div key={k}><b className="num">{String(c[k]).padStart(2, '0')}</b><span>{l}</span></div>
+      ))}
+    </div>
+  );
+}
+
+// ---------- Home ----------
+export function Home() {
+  const { data: hub, error } = useHub();
+  if (!hub) return <Loading error={error} />;
+  const now = Date.now();
+  const first = hub.fixtures.find((f) => f.starts_at)?.starts_at;
+  const live = hub.fixtures.filter((f) => f.status === 'live');
+  const upcoming = hub.fixtures.filter((f) => f.status === 'live' || (f.status !== 'finished' && new Date(f.starts_at) >= now - 3 * 3600e3)).slice(0, 4);
+  const results = hub.fixtures.filter((f) => f.status === 'finished').slice(-6).reverse();
+  const started = first && new Date(first) <= now;
+  const allDone = hub.fixtures.length > 0 && hub.fixtures.every((f) => f.status === 'finished');
+
+  return (
+    <>
+      <section className="landing">
+        <img className="landing-poster" src="/games-poster.webp" alt="BMESA Games ’27 — 4th to 11th December 2026. 5 classes, 1 crown." />
+        <div className="landing-side">
+          <div className="hero-title">
+            <img className="hero-logo sm" src="/bmesa-logo.png" alt="Biomedical Engineering Department logo" />
+            <div>
+              <div className="cat" style={{ color: 'var(--gold)' }}>BMESA Games ’27 · 5 classes, 1 crown</div>
+              <h1>{allDone ? 'That’s a wrap!' : started ? (live.length ? `${live.length} live now` : 'The games are on') : 'Who takes the crown?'}</h1>
+            </div>
+          </div>
+          <p>4–11 December · {hub.events.length} events · Football at Staff School, indoor games and esports at the BME Year 5 class.</p>
+          {!started && first && <Countdown to={first} />}
+          <div className="row" style={{ marginTop: 16 }}>
+            <Link className="btn gold" to="/fantasy">Play fantasy football</Link>
+            <Link className="btn ghost" to="/schedule">Full schedule</Link>
+          </div>
+          <div className="dark" style={{ marginTop: 22 }}>
+            <h3 className="side-h">{live.length ? 'Live & next' : 'Next up'}</h3>
+            <div className="card flush" style={{ background: 'rgba(255,255,255,.06)', borderColor: 'rgba(255,255,255,.12)' }}>
+              {upcoming.length ? upcoming.map((f) => <FixtureRow key={f.id} f={f} hub={hub} />) : <div className="empty">No more fixtures.</div>}
+            </div>
+          </div>
+        </div>
+      </section>
+      <section className="crown-strip">
+        {hub.medals.map((m) => {
+          const t = hub.teams.find((x) => x.id === m.team_id);
+          return (
+            <Link key={m.team_id} to="/teams" className="crown-team" title={t.name}>
+              <TeamLogo team={t} lg />
+              <b>{t.name}</b>
+              <span className="small muted">{m.gold}G · {m.silver}S · {m.bronze}B</span>
+            </Link>
+          );
+        })}
+      </section>
+      <div className="grid g2">
+        <section className="card flush">
+          <div className="card-h"><h2>Latest results</h2><Link className="small" to="/schedule">All fixtures</Link></div>
+          {results.length ? results.map((f) => <FixtureRow key={f.id} f={f} hub={hub} />) : <div className="empty">Results appear here as soon as organisers enter them.</div>}
+        </section>
+        <section className="card flush">
+          <div className="card-h"><h2>Medals table</h2><Link className="small" to="/medals">Full table</Link></div>
+          <MedalsTable medals={hub.medals} teams={hub.teams} />
+        </section>
+      </div>
+      <section className="card flush" style={{ marginTop: 16 }}>
+        <div className="card-h"><h2>Updates</h2></div>
+        {hub.announcements.length ? hub.announcements.map((a) => (
+          <article className="news" key={a.id}>
+            <h3>{a.title}</h3>{a.body && <p>{a.body}</p>}
+            <div className="small muted">{fmtShort(a.created_at)}{a.author && ` · ${a.author}`}</div>
+          </article>
+        )) : <div className="empty">No updates yet.</div>}
+      </section>
+    </>
+  );
+}
+
+// ---------- Schedule ----------
+export function Schedule() {
+  const { data: hub, error } = useHub();
+  const [params] = useSearchParams();
+  if (!hub) return <Loading error={error} />;
+  const cat = params.get('cat') || 'All';
+  const evCat = Object.fromEntries(hub.events.map((e) => [e.id, e.category]));
+  const days = new Map();
+  for (const f of hub.fixtures.filter((x) => cat === 'All' || evCat[x.event_id] === cat)) {
+    const k = f.starts_at ? dayKey(f.starts_at) : 'TBC';
+    if (!days.has(k)) days.set(k, []);
+    days.get(k).push(f);
+  }
+  return (
+    <>
+      <h1>Schedule & results</h1>
+      <div className="chips">
+        {['All', ...CATS].map((c) => <Link key={c} className={`chip ${c === cat ? 'on' : ''}`} to={c === 'All' ? '/schedule' : `/schedule?cat=${c}`}>{c}</Link>)}
+      </div>
+      {days.size === 0 && <div className="empty">Nothing scheduled.</div>}
+      {[...days.values()].map((fx) => (
+        <section className="day" key={fx[0].id}>
+          <div className="day-h"><h2>Day {fx[0].day ?? '?'}</h2><span className="muted">{fx[0].starts_at ? fmtDay(fx[0].starts_at) : 'Date TBC'}</span></div>
+          <div className="card flush">{fx.map((f) => <FixtureRow key={f.id} f={f} hub={hub} />)}</div>
+        </section>
+      ))}
+    </>
+  );
+}
+
+// ---------- Medals ----------
+export function Medals() {
+  const { data: hub, error } = useHub(60);
+  if (!hub) return <Loading error={error} />;
+  const byEvent = (id) => hub.placements.filter((p) => p.event_id === id);
+  const team = (id) => hub.teams.find((t) => t.id === id);
+  const done = hub.events.filter((e) => byEvent(e.id).length).length;
+  const Cell = ({ ev, pos }) => {
+    const p = byEvent(ev.id).find((x) => x.position === pos);
+    return p ? <span className="row" style={{ gap: 6 }}><TeamName team={team(p.team_id)} />{p.note && <span className="muted small">({p.note})</span>}</span> : <span className="muted">—</span>;
+  };
+  return (
+    <>
+      <div className="row spread"><h1>Medals table</h1><span className="muted">{done} of {hub.events.length} events decided</span></div>
+      <p className="muted" style={{ marginTop: -4 }}>The level with the most golds wins the main trophy (then silvers, then bronzes). Each event counts once, however many medals are handed to players.</p>
+      <div className="card flush"><MedalsTable medals={hub.medals} teams={hub.teams} /></div>
+      <h2 style={{ marginTop: 26 }}>Results by event</h2>
+      <div className="card flush scroll-x">
+        <table className="t">
+          <thead><tr><th>Event</th><th><span className="medal g">G</span></th><th><span className="medal s">S</span></th><th><span className="medal b">B</span></th></tr></thead>
+          <tbody>{hub.events.map((e) => (
+            <tr key={e.id}><td><Link to={`/event/${e.slug}`}>{e.name}</Link></td><td><Cell ev={e} pos={1} /></td><td><Cell ev={e} pos={2} /></td><td><Cell ev={e} pos={3} /></td></tr>
+          ))}</tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+// ---------- Events ----------
+export function Events() {
+  const { data: hub, error } = useHub(0);
+  if (!hub) return <Loading error={error} />;
+  return (
+    <>
+      <h1>Events</h1>
+      {CATS.map((c) => {
+        const evs = hub.events.filter((e) => e.category === c);
+        if (!evs.length) return null;
+        return (
+          <div key={c}>
+            <h2 style={{ marginTop: 20 }}>{c}</h2>
+            <div className="grid g3">{evs.map((e) => {
+              const gold = hub.placements.find((p) => p.event_id === e.id && p.position === 1);
+              const gt = gold && hub.teams.find((t) => t.id === gold.team_id);
+              return (
+                <Link key={e.id} className="card event-card" to={`/event/${e.slug}`}>
+                  <div className="cat">{e.category}</div>
+                  <h3 style={{ margin: '4px 0' }}>{e.name}</h3>
+                  <div className="small muted">{e.format}</div>
+                  <div className="small" style={{ marginTop: 8 }}>{gt ? <span className="row" style={{ gap: 6 }}><span className="medal g" style={{ width: 20, height: 20, fontSize: 11 }}>1</span><b>{gt.name}</b></span> : <span className="muted">{e.awards}</span>}</div>
+                </Link>
+              );
+            })}</div>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+function Bracket({ hub, ev }) {
+  const fx = hub.fixtures.filter((f) => f.event_id === ev.id);
+  const by = (r) => fx.filter((f) => (f.round || '').startsWith(r));
+  const side = (f, s) => teamSide(f, s, hub.teams);
+  const Single = ({ f }) => {
+    if (!f) return null;
+    const done = f.status === 'finished' && f.home_score != null;
+    return (
+      <div className="tie">
+        {['home', 'away'].map((s) => {
+          const mine = f[`${s}_score`], theirs = f[`${s === 'home' ? 'away' : 'home'}_score`];
+          return <div key={s} className={`tie-row ${done && mine > theirs ? 'win' : ''}`}><TeamName team={side(f, s)} /><b className="num">{done ? mine : ''}</b></div>;
+        })}
+        <div className="tie-foot">{f.round} · {fmtShort(f.starts_at)}</div>
+      </div>
+    );
+  };
+  const TwoLeg = ({ label }) => {
+    const legs = by(label);
+    if (!legs.length) return null;
+    const l1 = legs[0];
+    const ids = [l1.home_team_id, l1.away_team_id];
+    const agg = [0, 0];
+    let complete = true;
+    for (const l of legs) {
+      if (l.status !== 'finished' || l.home_score == null) { complete = false; continue; }
+      ids.forEach((id, i) => { if (!id) return; if (l.home_team_id === id) agg[i] += l.home_score; if (l.away_team_id === id) agg[i] += l.away_score; });
+    }
+    const any = legs.some((l) => l.status === 'finished');
+    return (
+      <div className="tie">
+        {['home', 'away'].map((s, i) => <div key={s} className={`tie-row ${complete && agg[i] > agg[1 - i] ? 'win' : ''}`}><TeamName team={side(l1, s)} /><b className="num">{any ? agg[i] : ''}</b></div>)}
+        <div className="tie-foot">{label} · {legs.map((l) => (l.status === 'finished' ? `${l.home_score}–${l.away_score}` : fmtShort(l.starts_at))).join(' · ')}{any && ' · aggregate'}</div>
+      </div>
+    );
+  };
+  return (
+    <section className="card" style={{ marginTop: 16 }}>
+      <h2>Bracket</h2>
+      <div className="bracket">
+        <div className="col"><h3>Playoff</h3><Single f={by('Playoff')[0]} /></div>
+        <div className="col"><h3>Semi-finals</h3><TwoLeg label="Semi-final 1" /><TwoLeg label="Semi-final 2" /></div>
+        <div className="col"><h3>Final day</h3><Single f={by('Final')[0]} /><Single f={by('3rd place')[0]} /></div>
+      </div>
+    </section>
+  );
+}
+
+export function Event() {
+  const { slug } = useParams();
+  const { data: hub, error } = useHub();
+  if (!hub) return <Loading error={error} />;
+  const ev = hub.events.find((e) => e.slug === slug);
+  if (!ev) return <div className="empty">Event not found.</div>;
+  const fx = hub.fixtures.filter((f) => f.event_id === ev.id);
+  const pl = hub.placements.filter((p) => p.event_id === ev.id);
+  return (
+    <>
+      <Link to="/events" className="small">← All events</Link>
+      <div className="cat" style={{ marginTop: 10 }}>{ev.category}</div>
+      <h1>{ev.name}</h1>
+      <div className="grid g2">
+        <section className="card">
+          <dl className="kv">
+            <dt>Format</dt><dd>{ev.format || 'TBC'}</dd>
+            <dt>Players</dt><dd>{ev.players_info || 'TBC'}</dd>
+            <dt>Awards</dt><dd>{ev.awards}</dd>
+            {ev.venue && <><dt>Venue</dt><dd>{ev.venue}</dd></>}
+            {ev.notes && <><dt>Notes</dt><dd>{ev.notes}</dd></>}
+          </dl>
+        </section>
+        <section className="card">
+          <h3>Podium</h3>
+          {pl.length ? <div className="podium">{pl.map((p) => (
+            <div key={p.position}><span className={`medal ${['', 'g', 's', 'b'][p.position]}`}>{p.position}</span><TeamName team={hub.teams.find((t) => t.id === p.team_id)} />{p.note && <span className="muted small">{p.note}</span>}</div>
+          ))}</div> : <p className="muted">Not decided yet.</p>}
+        </section>
+      </div>
+      {ev.slug === 'male-football' && <Bracket hub={hub} ev={ev} />}
+      <section className="card flush" style={{ marginTop: 16 }}>
+        <div className="card-h"><h2>Fixtures</h2></div>
+        {fx.length ? fx.map((f) => <FixtureRow key={f.id} f={f} hub={hub} showEvent={false} />) : <div className="empty">No fixtures yet.</div>}
+      </section>
+    </>
+  );
+}
+
+// ---------- Teams ----------
+export function Teams() {
+  const { data: hub, error } = useHub(0);
+  if (!hub) return <Loading error={error} />;
+  const levels = hub.teams.filter((t) => t.is_level);
+  const others = hub.teams.filter((t) => !t.is_level);
+  const medal = (id) => hub.medals.find((m) => m.team_id === id);
+  const Card = ({ t }) => {
+    const m = medal(t.id);
+    return (
+      <div className="card team-card">
+        <TeamLogo team={t} lg />
+        <h2 style={{ margin: 0 }}>{t.name}</h2>
+        <div className="kit"><Shirt color={t.color} jersey={t.jersey_url} /><Shirt isGk gkJersey={t.gk_jersey_url} /></div>
+        {m && <div className="small muted"><span className="medal g" style={{ width: 20, height: 20, fontSize: 11 }}>{m.gold}</span> <span className="medal s" style={{ width: 20, height: 20, fontSize: 11 }}>{m.silver}</span> <span className="medal b" style={{ width: 20, height: 20, fontSize: 11 }}>{m.bronze}</span> · Rank {m.rank}</div>}
+      </div>
+    );
+  };
+  return (
+    <>
+      <h1>Teams</h1>
+      <p className="muted">Five levels battling for the main trophy.</p>
+      <div className="grid g3">{levels.map((t) => <Card key={t.id} t={t} />)}</div>
+      {others.length > 0 && <><h2 style={{ marginTop: 24 }}>Other teams</h2><div className="grid g3">{others.map((t) => <Card key={t.id} t={t} />)}</div></>}
+    </>
+  );
+}
