@@ -227,7 +227,97 @@ export function AdminMedals() {
   );
 }
 
-// ---------- Updates ----------
+// ---------- Updates & athlete spotlight ----------
+/** Shrink a photo in the browser (longest side `size` px, JPEG) and return it as a data URL. */
+function resizePhoto(file, size = 900) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, size / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * scale);
+      c.height = Math.round(img.height * scale);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      resolve(c.toDataURL('image/jpeg', 0.82));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read that image. Try a JPEG or PNG.')); };
+    img.src = url;
+  });
+}
+
+function SpotlightAdmin({ hub, reload }) {
+  const run = useAction();
+  const blank = { athlete: '', team_id: null, event_id: '', headline: '', body: '', photo: null };
+  const [v, setV] = useState(blank);
+  const [busy, setBusy] = useState(false);
+  const set = (k) => (e) => setV({ ...v, [k]: e.target.value });
+  const team = (id) => hub.teams.find((t) => t.id === id);
+  const ev = (id) => hub.events.find((x) => x.id === id);
+
+  async function pick(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try { const photo = await resizePhoto(file); setV((x) => ({ ...x, photo })); }
+    catch (er) { alert(er.message); e.target.value = ''; }
+  }
+  async function post(e) {
+    e.preventDefault();
+    const form = e.target;
+    setBusy(true);
+    if (await run(() => api('/api/admin/spotlights', { body: v }), 'Spotlight posted')) { setV(blank); form.reset(); reload(); }
+    setBusy(false);
+  }
+  async function del(id) {
+    if (!confirm('Delete this spotlight?')) return;
+    if (await run(() => api(`/api/admin/spotlights/${id}`, { method: 'DELETE' }), 'Deleted')) reload();
+  }
+
+  return (
+    <div className="pick-layout" style={{ marginBottom: 28 }}>
+      <section className="card flush">
+        <div className="card-h"><h2>Athlete spotlight</h2><span className="small muted">The newest one is featured on the home page</span></div>
+        {hub.spotlights.length === 0 && <div className="empty">No spotlights yet.</div>}
+        {hub.spotlights.map((s, i) => (
+          <article key={s.id} className="news row spread" style={{ alignItems: 'flex-start', flexWrap: 'nowrap' }}>
+            <div className="row" style={{ alignItems: 'flex-start', flexWrap: 'nowrap' }}>
+              {s.image_url && <img src={s.image_url} alt="" style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 10, flex: 'none' }} />}
+              <div>
+                <h3>{s.athlete}{i === 0 && <span className="pill ft" style={{ marginLeft: 8 }}>Featured</span>}</h3>
+                <div className="small muted">{[team(s.team_id)?.name, ev(s.event_id)?.name].filter(Boolean).join(' · ')}</div>
+                {s.headline && <p style={{ margin: '4px 0' }}><b>{s.headline}</b></p>}
+                <div className="small muted">{fmtShort(s.created_at)}</div>
+              </div>
+            </div>
+            <button className="btn sm danger" onClick={() => del(s.id)}>Delete</button>
+          </article>
+        ))}
+      </section>
+      <section className="card">
+        <h3>Post a spotlight</h3>
+        <form onSubmit={post}>
+          <div className="field"><label>Athlete</label><input required maxLength={80} value={v.athlete} onChange={set('athlete')} placeholder="e.g. Mishell" /></div>
+          <div className="grid g2" style={{ gap: 10 }}>
+            <div className="field"><label>Class</label><TeamSelect teams={hub.teams} value={v.team_id} blank="—" onChange={(id) => setV({ ...v, team_id: id })} /></div>
+            <div className="field"><label>Event</label>
+              <select value={v.event_id} onChange={set('event_id')}><option value="">—</option>{hub.events.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></div>
+          </div>
+          <div className="field"><label>Headline</label><input maxLength={200} value={v.headline} onChange={set('headline')} placeholder="e.g. Hat-trick to send Year 5 to the final" /></div>
+          <div className="field"><label>Their feats</label><textarea rows={4} maxLength={1500} value={v.body} onChange={set('body')} placeholder="A short brief: what they did, scores, records…" /></div>
+          <div className="field">
+            <label>Photo</label>
+            <input type="file" accept="image/*" onChange={pick} />
+            {v.photo && <img src={v.photo} alt="Preview" style={{ display: 'block', marginTop: 8, maxWidth: '100%', maxHeight: 220, borderRadius: 10 }} />}
+            <div className="small muted">Portrait or square photos work best. It’s resized automatically.</div>
+          </div>
+          <button className="btn primary" disabled={busy}>{busy ? 'Posting…' : 'Post spotlight'}</button>
+        </form>
+      </section>
+    </div>
+  );
+}
+
 export function News() {
   const run = useAction();
   const { data: hub, error, reload } = useData('/api/hub');
@@ -244,6 +334,8 @@ export function News() {
   return (
     <>
       <h1>Updates</h1>
+      <SpotlightAdmin hub={hub} reload={reload} />
+      <h2>General updates</h2>
       <div className="pick-layout">
         <section className="card flush">
           {hub.announcements.length === 0 && <div className="empty">No updates.</div>}

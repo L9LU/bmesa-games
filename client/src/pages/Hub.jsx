@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useData, useTick } from '../app-context.jsx';
 import { FixtureRow, Loading, MedalsTable, Shirt, TeamLogo, TeamName } from '../components.jsx';
@@ -56,6 +57,10 @@ export function Home() {
           </div>
         </div>
       </section>
+      <div className={`updates-row ${hub.spotlights.length ? '' : 'solo'}`}>
+        {hub.spotlights.length > 0 && <Spotlight hub={hub} />}
+        <UpdatesFeed items={hub.announcements} />
+      </div>
       <section className="crown-strip">
         {hub.medals.map((m) => {
           const t = hub.teams.find((x) => x.id === m.team_id);
@@ -78,16 +83,57 @@ export function Home() {
           <MedalsTable medals={hub.medals} teams={hub.teams} />
         </section>
       </div>
-      <section className="card flush" style={{ marginTop: 16 }}>
-        <div className="card-h"><h2>Updates</h2></div>
-        {hub.announcements.length ? hub.announcements.map((a) => (
-          <article className="news" key={a.id}>
-            <h3>{a.title}</h3>{a.body && <p>{a.body}</p>}
-            <div className="small muted">{fmtShort(a.created_at)}{a.author && ` · ${a.author}`}</div>
-          </article>
-        )) : <div className="empty">No updates yet.</div>}
-      </section>
     </>
+  );
+}
+
+/** Athlete of the day: the newest spotlight, with earlier ones as thumbnails to flip through. */
+function Spotlight({ hub }) {
+  const [i, setI] = useState(0);
+  const all = hub.spotlights;
+  const s = all[Math.min(i, all.length - 1)];
+  const team = hub.teams.find((t) => t.id === s.team_id);
+  const ev = hub.events.find((e) => e.id === s.event_id);
+  return (
+    <section className="card spotlight">
+      {s.image_url
+        ? <img className="spot-photo" src={s.image_url} alt={s.athlete} />
+        : <div className="spot-photo spot-empty"><TeamLogo team={team} lg /></div>}
+      <div className="spot-body">
+        <div className="cat">⭐ {i === 0 ? 'Athlete of the day' : 'Athlete spotlight'}</div>
+        <h2 className="spot-name">{s.athlete}</h2>
+        <div className="row" style={{ gap: 8, marginBottom: 8 }}>
+          {team && <span className="pill"><TeamLogo team={team} /> {team.name}</span>}
+          {ev && <Link className="pill" to={`/event/${ev.slug}`}>{ev.name}</Link>}
+        </div>
+        {s.headline && <p className="spot-headline">{s.headline}</p>}
+        {s.body && <p className="spot-text">{s.body}</p>}
+        <div className="small muted">{fmtShort(s.created_at)}</div>
+        {all.length > 1 && (
+          <div className="spot-thumbs" aria-label="Earlier spotlights">
+            {all.map((x, k) => (
+              <button key={x.id} className={k === i ? 'on' : ''} onClick={() => setI(k)} title={x.athlete}>
+                {x.image_url ? <img src={x.image_url} alt={x.athlete} /> : <span>{x.athlete.slice(0, 1)}</span>}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function UpdatesFeed({ items }) {
+  return (
+    <section className="card flush updates-feed">
+      <div className="card-h"><h2>Updates</h2></div>
+      {items.length ? items.slice(0, 8).map((a) => (
+        <article className="news" key={a.id}>
+          <h3>{a.title}</h3>{a.body && <p>{a.body}</p>}
+          <div className="small muted">{fmtShort(a.created_at)}{a.author && ` · ${a.author}`}</div>
+        </article>
+      )) : <div className="empty">No updates yet.</div>}
+    </section>
   );
 }
 

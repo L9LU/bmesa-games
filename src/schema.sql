@@ -143,3 +143,18 @@ CREATE TABLE IF NOT EXISTS league_members (
   user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   PRIMARY KEY (league_id, user_id)
 );
+
+-- Athlete of the day: photo + short write-up, featured on the home page.
+-- Photos live in the database (Vercel has no persistent disk); they're resized in the browser first.
+CREATE TABLE IF NOT EXISTS spotlights (
+  id SERIAL PRIMARY KEY,
+  athlete TEXT NOT NULL,
+  team_id INT REFERENCES teams(id) ON DELETE SET NULL,
+  event_id INT REFERENCES events(id) ON DELETE SET NULL,
+  headline TEXT,
+  body TEXT,
+  image BYTEA,
+  image_type TEXT,
+  author_id INT REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

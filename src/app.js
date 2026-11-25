@@ -35,7 +35,10 @@ app.use((req, res, next) => {
   if (!JWT_SECRET) return res.status(500).json({ error: 'Server not configured: set the JWT_SECRET environment variable.' });
   ready().then(() => next(), next);
 });
-app.use(express.json({ limit: '200kb' }));
+// JSON bodies: small everywhere, except spotlight uploads which carry a (resized) photo
+const jsonSmall = express.json({ limit: '200kb' });
+const jsonPhoto = express.json({ limit: '3mb' });
+app.use((req, res, next) => (req.method === 'POST' && req.path === '/api/admin/spotlights' ? jsonPhoto : jsonSmall)(req, res, next));
 app.use(cookieParser());
 
 // ---------- helpers ----------
@@ -112,12 +115,14 @@ app.get('/api/me', (req, res) => res.json({ user: publicUser(req.user), levels: 
 
 // ---------- sports hub ----------
 async function hubData() {
-  const [teams, events, fixtures, placements, news] = await Promise.all([
+  const [teams, events, fixtures, placements, news, spots] = await Promise.all([
     db.query('SELECT * FROM teams ORDER BY id'),
     db.query('SELECT * FROM events ORDER BY sort'),
     db.query('SELECT * FROM fixtures ORDER BY starts_at, id'),
     db.query('SELECT * FROM placements ORDER BY event_id, position'),
     db.query('SELECT a.id, a.title, a.body, a.created_at, u.name AS author FROM announcements a LEFT JOIN users u ON u.id = a.author_id ORDER BY a.created_at DESC LIMIT 30'),
+    // Photo bytes are served separately (/api/spotlights/:id/image) so this stays light
+    db.query('SELECT id, athlete, team_id, event_id, headline, body, created_at, image IS NOT NULL AS has_image FROM spotlights ORDER BY created_at DESC, id DESC LIMIT 6'),
   ]);
   const medals = teams.rows.filter((t) => t.is_level).map((t) => {
     const mine = placements.rows.filter((p) => p.team_id === t.id);
@@ -128,9 +133,18 @@ async function hubData() {
     const p = medals[i - 1];
     m.rank = p && p.gold === m.gold && p.silver === m.silver && p.bronze === m.bronze ? p.rank : i + 1;
   });
-  return { teams: teams.rows, events: events.rows, fixtures: fixtures.rows, placements: placements.rows, announcements: news.rows, medals };
+  const spotlights = spots.rows.map((s) => ({ ...s, image_url: s.has_image ? `/api/spotlights/${s.id}/image` : null }));
+  return { teams: teams.rows, events: events.rows, fixtures: fixtures.rows, placements: placements.rows, announcements: news.rows, spotlights, medals };
 }
 app.get('/api/hub', wrap(async (req, res) => res.json(await hubData())));
+
+// Spotlight photos never change once posted (edit = delete + repost), so they can be cached hard
+app.get('/api/spotlights/:id/image', wrap(async (req, res) => {
+  const { rows } = await db.query('SELECT image, image_type FROM spotlights WHERE id = $1', [+req.params.id]);
+  if (!rows[0]?.image) return res.status(404).end();
+  res.set('Cache-Control', 'public, max-age=31536000, immutable');
+  res.type(rows[0].image_type || 'image/jpeg').send(Buffer.from(rows[0].image));
+}));
 
 // ---------- fantasy ----------
 app.get('/api/fantasy/bootstrap', wrap(async (req, res) => {
@@ -320,6 +334,31 @@ admin.post('/announcements', wrap(async (req, res) => {
 
 admin.delete('/announcements/:id', wrap(async (req, res) => {
   await db.query('DELETE FROM announcements WHERE id = $1', [+req.params.id]);
+  res.json({ ok: true });
+}));
+
+// Athlete spotlight. `photo` is a data URL (JPEG/PNG/WebP), already resized in the browser.
+admin.post('/spotlights', wrap(async (req, res) => {
+  const b = req.body;
+  const athlete = String(b.athlete || '').trim().slice(0, 80);
+  if (!athlete) return bad(res, 'Add the athlete’s name.');
+  let image = null, imageType = null;
+  if (b.photo) {
+    const m = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(b.photo));
+    if (!m) return bad(res, 'Photo must be a JPEG, PNG or WebP image.');
+    image = Buffer.from(m[2], 'base64');
+    imageType = m[1];
+    if (image.length > 1.5 * 1024 * 1024) return bad(res, 'Photo is too large (max 1.5 MB after resizing).');
+  }
+  const { rows } = await db.query(
+    `INSERT INTO spotlights (athlete, team_id, event_id, headline, body, image, image_type, author_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, athlete, created_at`,
+    [athlete, intOrNull(b.team_id), intOrNull(b.event_id), strOrNull(b.headline), String(b.body || '').trim().slice(0, 1500) || null, image, imageType, req.user.id]);
+  res.json({ spotlight: rows[0] });
+}));
+
+admin.delete('/spotlights/:id', wrap(async (req, res) => {
+  await db.query('DELETE FROM spotlights WHERE id = $1', [+req.params.id]);
   res.json({ ok: true });
 }));
 

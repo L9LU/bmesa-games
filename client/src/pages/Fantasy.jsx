@@ -102,9 +102,19 @@ function Picker({ b, reload, toast }) {
   const cost = players.reduce((s, p) => s + p.price, 0);
   const counts = (squad = S.squad) => { const c = { GK: 0, DEF: 0, MID: 0, FWD: 0 }; for (const id of Object.values(squad)) if (id) c[byId.get(id).position]++; return c; };
   const perTeam = (squad = S.squad) => { const c = {}; for (const id of Object.values(squad)) if (id) { const t = byId.get(id).team_id; c[t] = (c[t] || 0) + 1; } return c; };
+  // The position each empty slot is waiting for. Outfield gaps fill the pitch as DEF, DEF, MID, MID, FWD
+  // and the leftover position goes on the bench, so an empty squad shows a 2-2-2 squad (2-2-1 + FWD sub).
+  const slotLabels = (squad = S.squad) => {
+    const c = counts(squad);
+    const queue = ['DEF', 'MID', 'FWD'].flatMap((pos) => Array(Math.max(0, R.composition[pos] - c[pos])).fill(pos));
+    const labels = { 1: 'GK', 7: 'GK' };
+    for (const s of [...OUT_SLOTS, 8]) if (!squad[s]) labels[s] = queue.shift();
+    return labels;
+  };
   const fits = (p, slot, squad = S.squad) => {
     if (Object.values(squad).includes(p.id)) return false;
     if (isGkSlot(slot) !== (p.position === 'GK')) return false;
+    if (!squad[slot] && !isGkSlot(slot) && slotLabels(squad)[slot] !== p.position) return false;
     const cur = squad[slot] && byId.get(squad[slot]);
     const c = counts(squad); if (cur) c[cur.position]--;
     if (c[p.position] >= R.composition[p.position]) return false;
@@ -192,8 +202,9 @@ function Picker({ b, reload, toast }) {
     const fill = cheapestCompletion(active.filter((p) => !picked.includes(p)), need, teamCount, R.maxPerTeam);
     if (fill && spent + fill.cost <= R.budget) {
       const squad = { ...S.squad };
-      const gkSlots = free.filter(isGkSlot), outSlots = free.filter((s) => !isGkSlot(s));
-      for (const p of fill.players) squad[p.position === 'GK' ? gkSlots.shift() : outSlots.shift()] = p.id;
+      const lab = slotLabels(S.squad);
+      const open = [...free];
+      for (const p of fill.players) { const s = open.find((x) => lab[x] === p.position); open.splice(open.indexOf(s), 1); squad[s] = p.id; }
       return applyAutoSquad(squad);
     }
 
@@ -231,12 +242,13 @@ function Picker({ b, reload, toast }) {
   }
 
   // ----- render helpers -----
+  const labels = slotLabels();
   const Card = ({ slot }) => {
     const id = S.squad[slot];
     if (!id) {
       return (
         <button className={`pcard empty ${sel === slot ? 'sel' : ''}`} onClick={() => clickSlot(slot)}>
-          <div className="shirt">+</div><div className="nm">{isGkSlot(slot) ? 'GK' : 'Outfield'}</div><div className="sub">Add</div>
+          <div className="shirt">+</div><div className="nm">{labels[slot]}</div><div className="sub">Add</div>
         </button>
       );
     }
@@ -252,12 +264,12 @@ function Picker({ b, reload, toast }) {
     );
   };
 
-  const filled = OUT_SLOTS.filter((s) => S.squad[s]);
-  const rows = ['DEF', 'MID', 'FWD'].map((pos) => filled.filter((s) => byId.get(S.squad[s]).position === pos)).filter((r) => r.length);
-  const empties = OUT_SLOTS.filter((s) => !S.squad[s]);
+  // Pitch rows by position, mixing picked players and labelled empty slots
+  const posOf = (s) => (S.squad[s] ? byId.get(S.squad[s]).position : labels[s]);
+  const rows = ['DEF', 'MID', 'FWD'].map((pos) => OUT_SLOTS.filter((s) => posOf(s) === pos)).filter((r) => r.length);
 
   let list = b.players.filter((p) => p.active);
-  if (sel) list = list.filter((p) => (isGkSlot(sel) ? p.position === 'GK' : p.position !== 'GK'));
+  if (sel) list = list.filter((p) => p.position === labels[sel]);
   if (f.pos !== 'ALL') list = list.filter((p) => p.position === f.pos);
   if (f.team !== 'ALL') list = list.filter((p) => p.team_id === +f.team);
   if (f.q) list = list.filter((p) => p.name.toLowerCase().includes(f.q.toLowerCase()));
@@ -291,7 +303,6 @@ function Picker({ b, reload, toast }) {
           <div className="pitch">
             <div className="prow"><Card slot={1} /></div>
             {rows.map((r, i) => <div className="prow" key={i}>{r.map((s) => <Card key={s} slot={s} />)}</div>)}
-            {empties.length > 0 && <div className="prow">{empties.map((s) => <Card key={s} slot={s} />)}</div>}
           </div>
           <div className="bench"><h4>Substitutes</h4><div className="prow"><Card slot={7} /><Card slot={8} /></div></div>
           {gw && (
@@ -308,7 +319,7 @@ function Picker({ b, reload, toast }) {
         </div>
 
         <div className="card flush">
-          <div className="card-h"><h3>{sel ? `Choose a ${isGkSlot(sel) ? 'goalkeeper' : 'outfield player'}` : 'Players'}</h3>{sel && <button className="btn sm" onClick={() => setSel(null)}>Show all</button>}</div>
+          <div className="card-h"><h3>{sel ? `Choose a ${POS_NAME[labels[sel]].toLowerCase()}` : 'Players'}</h3>{sel && <button className="btn sm" onClick={() => setSel(null)}>Show all</button>}</div>
           <div className="filters">
             <input type="search" placeholder="Search players" value={f.q} onChange={setFilter('q')} />
             <select value={f.pos} onChange={setFilter('pos')}><option value="ALL">All positions</option>{POS.map((x) => <option key={x} value={x}>{POS_NAME[x]}s</option>)}</select>

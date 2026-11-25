@@ -291,3 +291,26 @@ table.t { width: 100%; border-collapse: collapse; font-size: 14px; }
   .crown-team .team-logo.lg { width: 48px; height: 48px; }
   .crown-team b { font-size: 13px; }
 }
+
+/* ---------- athlete spotlight + updates (home) ---------- */
+.updates-row { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: 16px; margin-bottom: 18px; align-items: start; }
+.updates-row.solo { grid-template-columns: 1fr; }
+.spotlight { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 18px; padding: 16px; border-top: 4px solid var(--gold); }
+.spot-photo { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 12px; background: #e2e8f0; display: block; }
+.spot-empty { display: grid; place-items: center; }
+.spot-name { font-size: 34px; margin: 2px 0 8px; }
+.spot-headline { font-weight: 700; font-size: 16px; margin: 0 0 6px; }
+.spot-text { margin: 0 0 8px; white-space: pre-line; color: #334155; }
+.spotlight .pill .team-logo { width: 16px; height: 16px; border-radius: 4px; }
+.spotlight .pill { text-decoration: none; }
+.spot-thumbs { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.spot-thumbs button { width: 44px; height: 44px; padding: 0; border: 2px solid transparent; border-radius: 10px; overflow: hidden; cursor: pointer; background: #e2e8f0; font: 700 16px var(--head); color: var(--navy); }
+.spot-thumbs button.on { border-color: var(--gold); }
+.spot-thumbs img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.updates-feed { max-height: 420px; overflow: auto; }
+@media (max-width: 860px) {
+  .updates-row { grid-template-columns: 1fr; }
+  .spotlight { grid-template-columns: 1fr; }
+  .spot-photo { max-height: 380px; }
+  .spot-name { font-size: 28px; }
+}
