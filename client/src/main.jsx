@@ -1,13 +1,16 @@
-import { StrictMode } from 'react';
+import { lazy, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Link, Route, Routes } from 'react-router-dom';
 import './styles.css';
 import { AppProvider, useApp } from './app-context.jsx';
 import { Layout, Loading } from './components.jsx';
 import * as Hub from './pages/Hub.jsx';
-import * as Fantasy from './pages/Fantasy.jsx';
-import * as Admin from './pages/Admin.jsx';
 import { AuthForm } from './pages/Auth.jsx';
+
+// Fantasy and Admin pages load on demand, so the home page downloads less on mobile data
+const lazyPages = (load, names) => Object.fromEntries(names.map((n) => [n, lazy(() => load().then((m) => ({ default: m[n] })))]));
+const Fantasy = lazyPages(() => import('./pages/Fantasy.jsx'), ['PickTeam', 'Points', 'Leagues', 'Stats', 'Fixtures', 'Rules']);
+const Admin = lazyPages(() => import('./pages/Admin.jsx'), ['Results', 'FixtureStats', 'AdminMedals', 'News', 'Players', 'TeamsAdmin', 'Gameweeks', 'Users']);
 
 function StaffOnly({ children }) {
   const { isStaff, ready } = useApp();

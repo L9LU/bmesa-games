@@ -314,3 +314,13 @@ table.t { width: 100%; border-collapse: collapse; font-size: 14px; }
   .spot-photo { max-height: 380px; }
   .spot-name { font-size: 28px; }
 }
+
+/* ---------- motion (GSAP / Lenis / React Bits) ---------- */
+.landing-h1 { font-size: 44px; margin-bottom: 4px; line-height: 1.05; }
+.spotlight-card.crown-card { padding: 0; border-radius: 14px; box-shadow: none; transition: transform .15s, box-shadow .15s; }
+.spotlight-card.crown-card:hover { transform: translateY(-3px); box-shadow: 0 10px 26px rgba(15,23,42,.12); }
+.crown-card .crown-team { border: 0; background: transparent; height: 100%; }
+.crown-card .crown-team:hover { transform: none; box-shadow: none; }
+.spotlight .cat .shiny-text { font-weight: 800; }
+@media (max-width: 860px) { .landing-h1 { font-size: 34px; } }
+@media (prefers-reduced-motion: reduce) { .spotlight-card.crown-card, .event-card { transition: none; } }

@@ -1,8 +1,22 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { gsap } from 'gsap';
+import { useGSAP } from '@gsap/react';
 import { useData, useTick } from '../app-context.jsx';
 import { FixtureRow, Loading, MedalsTable, Shirt, TeamLogo, TeamName } from '../components.jsx';
 import { countdown, dayKey, fmtDay, fmtShort, teamSide } from '../lib.js';
+import { prefersReducedMotion } from '../motion.js';
+import AnimatedContent from '../vendor/react-bits/AnimatedContent.jsx';
+import ShinyText from '../vendor/react-bits/ShinyText.jsx';
+import SplitText from '../vendor/react-bits/SplitText.jsx';
+import SpotlightCard from '../vendor/react-bits/SpotlightCard.jsx';
+
+gsap.registerPlugin(useGSAP);
+
+/** Scroll-in reveal used across the hub (React Bits AnimatedContent with house settings). */
+const Reveal = ({ children, ...props }) => (
+  <AnimatedContent distance={36} duration={0.7} ease="power3.out" threshold={0.12} {...props}>{children}</AnimatedContent>
+);
 
 const CATS = ['Football', 'Basketball', 'Volleyball', 'Badminton', 'Track', 'Indoor', 'Esports'];
 const useHub = (refreshSec = 30) => useData('/api/hub', { refreshSec });
@@ -30,50 +44,30 @@ export function Home() {
   const results = hub.fixtures.filter((f) => f.status === 'finished').slice(-6).reverse();
   const started = first && new Date(first) <= now;
   const allDone = hub.fixtures.length > 0 && hub.fixtures.every((f) => f.status === 'finished');
+  const headline = allDone ? 'That’s a wrap!' : started ? (live.length ? `${live.length} live now` : 'The games are on') : 'Who takes the crown?';
 
   return (
     <>
-      <section className="landing">
-        <img className="landing-poster" src="/games-poster.webp" alt="BMESA Games ’27 — 4th to 11th December 2026. 5 classes, 1 crown." />
-        <div className="landing-side">
-          <div className="hero-title">
-            <img className="hero-logo sm" src="/bmesa-logo.png" alt="Biomedical Engineering Department logo" />
-            <div>
-              <div className="cat" style={{ color: 'var(--gold)' }}>BMESA Games ’27 · 5 classes, 1 crown</div>
-              <h1>{allDone ? 'That’s a wrap!' : started ? (live.length ? `${live.length} live now` : 'The games are on') : 'Who takes the crown?'}</h1>
-            </div>
-          </div>
-          <p>4–11 December · {hub.events.length} events · Football at Staff School, indoor games and esports at the BME Year 5 class.</p>
-          {!started && first && <Countdown to={first} />}
-          <div className="row" style={{ marginTop: 16 }}>
-            <Link className="btn gold" to="/fantasy">Play fantasy football</Link>
-            <Link className="btn ghost" to="/schedule">Full schedule</Link>
-          </div>
-          <div className="dark" style={{ marginTop: 22 }}>
-            <h3 className="side-h">{live.length ? 'Live & next' : 'Next up'}</h3>
-            <div className="card flush" style={{ background: 'rgba(255,255,255,.06)', borderColor: 'rgba(255,255,255,.12)' }}>
-              {upcoming.length ? upcoming.map((f) => <FixtureRow key={f.id} f={f} hub={hub} />) : <div className="empty">No more fixtures.</div>}
-            </div>
-          </div>
-        </div>
-      </section>
-      <div className={`updates-row ${hub.spotlights.length ? '' : 'solo'}`}>
+      <Landing hub={hub} headline={headline} first={first} started={started} live={live} upcoming={upcoming} />
+      <Reveal className={`updates-row ${hub.spotlights.length ? '' : 'solo'}`}>
         {hub.spotlights.length > 0 && <Spotlight hub={hub} />}
         <UpdatesFeed items={hub.announcements} />
-      </div>
-      <section className="crown-strip">
+      </Reveal>
+      <Reveal className="crown-strip" stagger={0.08} distance={28}>
         {hub.medals.map((m) => {
           const t = hub.teams.find((x) => x.id === m.team_id);
           return (
-            <Link key={m.team_id} to="/teams" className="crown-team" title={t.name}>
-              <TeamLogo team={t} lg />
-              <b>{t.name}</b>
-              <span className="small muted">{m.gold}G · {m.silver}S · {m.bronze}B</span>
-            </Link>
+            <SpotlightCard key={m.team_id} className="crown-card" theme="light" spotlightColor="#f6d10f" intensity={0.35} spotlightSize={160} borderGlow={0.9}>
+              <Link to="/teams" className="crown-team" title={t.name}>
+                <TeamLogo team={t} lg />
+                <b>{t.name}</b>
+                <span className="small muted">{m.gold}G · {m.silver}S · {m.bronze}B</span>
+              </Link>
+            </SpotlightCard>
           );
         })}
-      </section>
-      <div className="grid g2">
+      </Reveal>
+      <Reveal className="grid g2" stagger={0.12}>
         <section className="card flush">
           <div className="card-h"><h2>Latest results</h2><Link className="small" to="/schedule">All fixtures</Link></div>
           {results.length ? results.map((f) => <FixtureRow key={f.id} f={f} hub={hub} />) : <div className="empty">Results appear here as soon as organisers enter them.</div>}
@@ -82,8 +76,51 @@ export function Home() {
           <div className="card-h"><h2>Medals table</h2><Link className="small" to="/medals">Full table</Link></div>
           <MedalsTable medals={hub.medals} teams={hub.teams} />
         </section>
-      </div>
+      </Reveal>
     </>
+  );
+}
+
+/** Poster hero with a GSAP entrance: poster rises in, logo spins in, headline splits in, the rest staggers. */
+function Landing({ hub, headline, first, started, live, upcoming }) {
+  const scope = useRef(null);
+  useGSAP(() => {
+    if (prefersReducedMotion()) return;
+    // clearProps only what we animate, so React's inline styles (e.g. the label colour) survive
+    gsap.timeline({ defaults: { ease: 'power3.out', clearProps: 'transform,opacity' } })
+      .from('.landing-poster', { y: 40, scale: 0.94, opacity: 0, duration: 0.9 })
+      .from('.hero-logo', { scale: 0, rotation: -120, opacity: 0, duration: 0.8, ease: 'back.out(1.6)' }, '-=0.6')
+      .from('.landing-side .cat', { y: 12, opacity: 0, duration: 0.5 }, '-=0.5')
+      .from('.landing-side > p, .countdown > div, .landing-side .row .btn', { y: 18, opacity: 0, duration: 0.5, stagger: 0.06 }, '-=0.1')
+      .from('.landing-side .side-h, .landing-side .fx', { x: 28, opacity: 0, duration: 0.5, stagger: 0.07 }, '-=0.3');
+  }, { scope });
+
+  return (
+    <section className="landing" ref={scope}>
+      <img className="landing-poster" src="/games-poster.webp" alt="BMESA Games ’27 — 4th to 11th December 2026. 5 classes, 1 crown." />
+      <div className="landing-side">
+        <div className="hero-title">
+          <img className="hero-logo sm" src="/bmesa-logo.png" alt="Biomedical Engineering Department logo" />
+          <div>
+            <div className="cat" style={{ color: 'var(--gold)' }}>BMESA Games ’27 · 5 classes, 1 crown</div>
+            <SplitText tag="h1" className="landing-h1" text={headline} splitType="chars" effect="rise" trigger="load"
+              delay={35} duration={0.9} textAlign="left" />
+          </div>
+        </div>
+        <p>4–11 December · {hub.events.length} events · Football at Staff School, indoor games and esports at the BME Year 5 class.</p>
+        {!started && first && <Countdown to={first} />}
+        <div className="row" style={{ marginTop: 16 }}>
+          <Link className="btn gold" to="/fantasy">Play fantasy football</Link>
+          <Link className="btn ghost" to="/schedule">Full schedule</Link>
+        </div>
+        <div className="dark" style={{ marginTop: 22 }}>
+          <h3 className="side-h">{live.length ? 'Live & next' : 'Next up'}</h3>
+          <div className="card flush" style={{ background: 'rgba(255,255,255,.06)', borderColor: 'rgba(255,255,255,.12)' }}>
+            {upcoming.length ? upcoming.map((f) => <FixtureRow key={f.id} f={f} hub={hub} />) : <div className="empty">No more fixtures.</div>}
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -100,7 +137,7 @@ function Spotlight({ hub }) {
         ? <img className="spot-photo" src={s.image_url} alt={s.athlete} />
         : <div className="spot-photo spot-empty"><TeamLogo team={team} lg /></div>}
       <div className="spot-body">
-        <div className="cat">⭐ {i === 0 ? 'Athlete of the day' : 'Athlete spotlight'}</div>
+        <div className="cat">⭐ <ShinyText text={i === 0 ? 'Athlete of the day' : 'Athlete spotlight'} color="#16248a" shineColor="#f6d10f" speed={2.4} delay={1.8} /></div>
         <h2 className="spot-name">{s.athlete}</h2>
         <div className="row" style={{ gap: 8, marginBottom: 8 }}>
           {team && <span className="pill"><TeamLogo team={team} /> {team.name}</span>}
@@ -125,7 +162,7 @@ function Spotlight({ hub }) {
 
 function UpdatesFeed({ items }) {
   return (
-    <section className="card flush updates-feed">
+    <section className="card flush updates-feed" data-lenis-prevent>
       <div className="card-h"><h2>Updates</h2></div>
       {items.length ? items.slice(0, 8).map((a) => (
         <article className="news" key={a.id}>
@@ -158,10 +195,10 @@ export function Schedule() {
       </div>
       {days.size === 0 && <div className="empty">Nothing scheduled.</div>}
       {[...days.values()].map((fx) => (
-        <section className="day" key={fx[0].id}>
+        <Reveal className="day" key={fx[0].id} distance={28}>
           <div className="day-h"><h2>Day {fx[0].day ?? '?'}</h2><span className="muted">{fx[0].starts_at ? fmtDay(fx[0].starts_at) : 'Date TBC'}</span></div>
           <div className="card flush">{fx.map((f) => <FixtureRow key={f.id} f={f} hub={hub} />)}</div>
-        </section>
+        </Reveal>
       ))}
     </>
   );
@@ -209,7 +246,7 @@ export function Events() {
         return (
           <div key={c}>
             <h2 style={{ marginTop: 20 }}>{c}</h2>
-            <div className="grid g3">{evs.map((e) => {
+            <Reveal className="grid g3" stagger={0.05} distance={24}>{evs.map((e) => {
               const gold = hub.placements.find((p) => p.event_id === e.id && p.position === 1);
               const gt = gold && hub.teams.find((t) => t.id === gold.team_id);
               return (
@@ -220,7 +257,7 @@ export function Events() {
                   <div className="small" style={{ marginTop: 8 }}>{gt ? <span className="row" style={{ gap: 6 }}><span className="medal g" style={{ width: 20, height: 20, fontSize: 11 }}>1</span><b>{gt.name}</b></span> : <span className="muted">{e.awards}</span>}</div>
                 </Link>
               );
-            })}</div>
+            })}</Reveal>
           </div>
         );
       })}
@@ -337,8 +374,8 @@ export function Teams() {
     <>
       <h1>Teams</h1>
       <p className="muted">Five levels battling for the main trophy.</p>
-      <div className="grid g3">{levels.map((t) => <Card key={t.id} t={t} />)}</div>
-      {others.length > 0 && <><h2 style={{ marginTop: 24 }}>Other teams</h2><div className="grid g3">{others.map((t) => <Card key={t.id} t={t} />)}</div></>}
+      <Reveal className="grid g3" stagger={0.08}>{levels.map((t) => <Card key={t.id} t={t} />)}</Reveal>
+      {others.length > 0 && <><h2 style={{ marginTop: 24 }}>Other teams</h2><Reveal className="grid g3" stagger={0.08}>{others.map((t) => <Card key={t.id} t={t} />)}</Reveal></>}
     </>
   );
 }

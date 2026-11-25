@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from './app-context.jsx';
+import { scrollToTop, useSmoothScroll } from './motion.js';
 import { api, fmtTime, teamSide } from './lib.js';
 
 // ---------- Layout ----------
@@ -18,7 +19,8 @@ export function Layout() {
   const items = SUB[section].filter(([to]) => to !== '/admin/users' || user?.role === 'admin');
   const active = items.filter(([to]) => pathname === to || pathname.startsWith(to + '/')).sort((a, b) => b[0].length - a[0].length)[0]?.[0];
 
-  useEffect(() => { window.scrollTo(0, 0); }, [pathname]);
+  useSmoothScroll();
+  useEffect(() => { scrollToTop(); }, [pathname]);
 
   async function logout() {
     await api('/api/auth/logout', { body: {} });
@@ -47,7 +49,7 @@ export function Layout() {
           {items.map(([to, label]) => <Link key={to} to={to} className={active === to ? 'on' : ''}>{label}</Link>)}
         </nav>
       </header>
-      <main className="wrap"><Outlet /></main>
+      <main className="wrap"><Suspense fallback={<Loading />}><Outlet /></Suspense></main>
       <footer className="wrap foot">BMESA Games · Biomedical Engineering Department · 4–11 December 2026 · All times West Africa Time (WAT)</footer>
     </>
   );
@@ -61,7 +63,7 @@ export function Modal({ title, onClose, wide, children }) {
     return () => document.removeEventListener('keydown', k);
   }, [onClose]);
   return (
-    <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="modal" role="dialog" aria-modal="true" data-lenis-prevent onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className={`modal-box ${wide ? 'wide' : ''}`}>
         <div className="modal-h"><h2>{title}</h2><button className="x" aria-label="Close" onClick={onClose}>&times;</button></div>
         <div className="modal-b">{children}</div>

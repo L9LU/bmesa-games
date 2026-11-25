@@ -336,7 +336,7 @@ function Picker({ b, reload, toast }) {
             <select value={f.sort} onChange={setFilter('sort')}><option value="points">Sort: points</option><option value="price">Sort: price</option><option value="selected">Sort: selected</option></select>
             <input type="number" step="0.5" min="3" placeholder="Max price" value={f.max} onChange={setFilter('max')} style={{ width: 110 }} />
           </div>
-          <div className="plist">
+          <div className="plist" data-lenis-prevent>
             <table className="t">
               <thead><tr><th></th><th>Player</th><th className="r">Price</th><th className="r">Pts</th><th className="r">Sel</th><th></th></tr></thead>
               <tbody>
