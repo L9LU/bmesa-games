@@ -328,7 +328,7 @@ function parsePlayer(b) {
   const price = Math.round(parseFloat(b.price) * 10);
   if (!String(b.name || '').trim()) return { error: 'Player needs a name.' };
   if (!['GK', 'DEF', 'MID', 'FWD'].includes(position)) return { error: `Position must be GK, DEF, MID or FWD (got "${b.position}").` };
-  if (!(price >= 30 && price <= 150)) return { error: `Price must be between 3.0 and 15.0 (got "${b.price}").` };
+  if (!(price >= 30 && price <= 200)) return { error: `Price must be between 3.0 and 20.0 (got "${b.price}").` };
   return { name: String(b.name).trim().slice(0, 60), position, price, team_id: +b.team_id, active: b.active !== false };
 }
 

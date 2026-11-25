@@ -39,7 +39,7 @@ test('valid squad passes', () => {
 
 test('over budget and team limit fail', () => {
   const { players, picks } = squad();
-  players.get(7).price = 140;
+  for (const id of [3, 4, 5, 6]) players.get(id).price = 150; // 810 > 700
   assert.match(validateSquad(picks, players).error, /budget/);
   const s2 = squad();
   for (const id of [3, 5, 6, 7]) s2.players.get(id).team_id = 9;

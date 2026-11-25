@@ -1,7 +1,7 @@
 // Fantasy rules and scoring. Pure functions only, so they are easy to test and tweak.
 
 const RULES = {
-  budget: 500,                 // tenths of a million: 500 = 50.0m
+  budget: 700,                 // tenths of a million: 700 = 70.0m
   squadSize: 8,
   composition: { GK: 2, DEF: 2, MID: 2, FWD: 2 },
   maxPerTeam: 3,

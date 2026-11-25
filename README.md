@@ -79,7 +79,7 @@ Admins can make other people organisers on **Admin → Users**.
 
 **Before 4 December**
 - **Team logos and jerseys**: save the images in `client/public/kits/` (e.g. `y1-logo.png`, `y1-jersey.png`, `y1-gk.png` — transparent PNGs look best), rebuild, then on **Admin → Teams & kits** enter each path (e.g. `/kits/y1-logo.png`). An https:// image link also works. Teams without a jersey image show a plain shirt in the team colour.
-- **Admin → Players**: add every men's football player with team, position (GK/DEF/MID/FWD) and price. Bulk add takes one per line: `Tobi Ade, Year 3, FWD, 7.5`. Players need at least 2 GKs, 2 DEFs, 2 MIDs and 2 FWDs available in total; a good spread is 3.5–9.0m.
+- **Admin → Players**: add every men's football player with team, position (GK/DEF/MID/FWD) and price. Bulk add takes one per line: `Tobi Ade, Year 3, FWD, 7.5`. Players need at least 2 GKs, 2 DEFs, 2 MIDs and 2 FWDs available in total; a good spread is 4.0–15.0m (max 20.0).
 - **Admin → Gameweeks**: check the deadlines (default: 1 hour before each football match day).
 - Share the link so people sign up and pick teams.
 
@@ -94,7 +94,7 @@ Admins can make other people organisers on **Admin → Users**.
 
 | | |
 |---|---|
-| Budget | 50.0m |
+| Budget | 70.0m |
 | Squad | 8: 2 GK, 2 DEF, 2 MID, 2 FWD (6 start, 2 on the bench) |
 | Max per level | 3 |
 | Gameweeks | GW1 Fri 4 Dec · GW2 Mon 7 Dec · GW3 Tue 8 Dec · GW4 Fri 11 Dec |

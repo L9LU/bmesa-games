@@ -277,7 +277,7 @@ function PlayerRow({ p, teams }) {
       <td><input value={v.name} onChange={set('name')} /></td>
       <td><select value={v.team_id} onChange={set('team_id')}>{teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></td>
       <td><select value={v.position} onChange={set('position')}>{['GK', 'DEF', 'MID', 'FWD'].map((x) => <option key={x}>{x}</option>)}</select></td>
-      <td><input type="number" step="0.5" min="3" max="15" value={v.price} onChange={set('price')} style={{ width: 76 }} /></td>
+      <td><input type="number" step="0.5" min="3" max="20" value={v.price} onChange={set('price')} style={{ width: 76 }} /></td>
       <td><input type="checkbox" checked={v.active} onChange={set('active')} /></td>
       <td className="r num">{p.total_points}</td>
       <td><button className="btn sm" onClick={() => run(() => api(`/api/admin/players/${p.id}`, { method: 'PUT', body: v }))}>Save</button></td>
@@ -313,7 +313,7 @@ export function Players() {
             <input placeholder="Full name" required value={one.name} onChange={(e) => setOne({ ...one, name: e.target.value })} style={{ flex: 1, minWidth: 140 }} />
             <select value={one.team_id || teams[0]?.id} onChange={(e) => setOne({ ...one, team_id: e.target.value })}>{teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
             <select value={one.position} onChange={(e) => setOne({ ...one, position: e.target.value })}>{['GK', 'DEF', 'MID', 'FWD'].map((x) => <option key={x}>{x}</option>)}</select>
-            <input type="number" step="0.5" min="3" max="15" value={one.price} onChange={(e) => setOne({ ...one, price: e.target.value })} style={{ width: 80 }} />
+            <input type="number" step="0.5" min="3" max="20" value={one.price} onChange={(e) => setOne({ ...one, price: e.target.value })} style={{ width: 80 }} />
             <button className="btn primary">Add</button>
           </form>
         </section>
