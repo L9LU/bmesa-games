@@ -95,7 +95,7 @@ Admins can make other people organisers on **Admin → Users**.
 | | |
 |---|---|
 | Budget | 70.0m |
-| Squad | 8: 2 GK, 2 DEF, 2 MID, 2 FWD (6 start, 2 on the bench) |
+| Squad | 8: 2 GK, 2 DEF, 2 MID, 2 FWD (6 start, 2 on the bench; the starting six must include at least 1 GK, DEF, MID and FWD) |
 | Max per level | 3 |
 | Gameweeks | GW1 Fri 4 Dec · GW2 Mon 7 Dec · GW3 Tue 8 Dec · GW4 Fri 11 Dec |
 | Transfers | Unlimited before your first deadline, then 2 free per gameweek, −4 pts each after |

@@ -638,6 +638,7 @@ export function Rules() {
             <li>Your budget is <b>{money(R.budget)}</b>. Prices are set by the organisers and don’t change.</li>
             <li>Max <b>{R.maxPerTeam}</b> players from any one level.</li>
             <li>6 start (1 goalkeeper + 5 outfield, matching the 6-a-side format), 2 sit on the bench.</li>
+            <li>Your starting six must include <b>at least 1 goalkeeper, 1 defender, 1 midfielder and 1 forward</b> — you can’t bench both players in a position.</li>
             <li>Your <b>captain scores double</b>. If he doesn’t play, your vice-captain scores double instead.</li>
             <li>If a starter doesn’t play, your bench player in the same role (GK or outfield) comes on automatically, if he played.</li>
           </ul>

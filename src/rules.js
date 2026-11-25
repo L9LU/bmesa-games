@@ -9,6 +9,8 @@ const RULES = {
   hitCost: 4,                  // points per extra transfer
   // Slots: 1 = starting GK, 2..6 = starting outfield, 7 = bench GK, 8 = bench outfield
   starterSlots: [1, 2, 3, 4, 5, 6],
+  // Every position must be represented in the starting six (no benching both defenders, etc.)
+  minStarters: { GK: 1, DEF: 1, MID: 1, FWD: 1 },
 };
 
 const POINTS = {
@@ -82,6 +84,13 @@ function validateSquad(picks, players) {
     if (count[pos] !== n) return fail(`You need exactly ${n} ${pos}s.`);
   }
   if (Object.values(perTeam).some((n) => n > RULES.maxPerTeam)) return fail(`Max ${RULES.maxPerTeam} players from one team.`);
+
+  const started = { GK: 0, DEF: 0, MID: 0, FWD: 0 };
+  for (const pick of picks) if (RULES.starterSlots.includes(pick.slot)) started[players.get(pick.player_id).position]++;
+  const WORD = { GK: 'goalkeeper', DEF: 'defender', MID: 'midfielder', FWD: 'forward' };
+  for (const [pos, n] of Object.entries(RULES.minStarters)) {
+    if (started[pos] < n) return fail(`Your starting six needs at least ${n} ${WORD[pos]}${n > 1 ? 's' : ''}.`);
+  }
   if (cost > RULES.budget) return fail(`Squad costs ${(cost / 10).toFixed(1)}m, over the ${(RULES.budget / 10).toFixed(1)}m budget.`);
 
   const caps = picks.filter((p) => p.is_captain);

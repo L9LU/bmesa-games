@@ -73,3 +73,25 @@ test('no auto-sub while matches pending', () => {
 test('countTransfers', () => {
   assert.strictEqual(countTransfers([1, 2, 3], [1, 4, 5]), 2);
 });
+
+test('starting six must include every position', () => {
+  const { RULES } = require('../src/rules');
+  const saved = RULES.composition;
+  // A squad shape where benching a whole position is possible: 3 DEF, 1 MID
+  RULES.composition = { GK: 2, DEF: 3, MID: 1, FWD: 2 };
+  try {
+    const players = new Map();
+    const add = (id, position, team_id) => players.set(id, { id, name: `P${id}`, position, team_id, price: 50, active: true });
+    add(1, 'GK', 1); add(2, 'GK', 2); add(3, 'DEF', 1); add(4, 'DEF', 2); add(5, 'DEF', 3); add(6, 'MID', 4); add(7, 'FWD', 5); add(8, 'FWD', 3);
+    const lineup = (starters, benchOut) => [
+      { player_id: 1, slot: 1 }, ...starters.map((id, i) => ({ player_id: id, slot: i + 2 })),
+      { player_id: 2, slot: 7 }, { player_id: benchOut, slot: 8 },
+    ].map((p) => ({ ...p, is_captain: p.slot === 6, is_vice: p.slot === 5 }));
+    // Only midfielder on the bench -> rejected
+    assert.match(validateSquad(lineup([3, 4, 5, 7, 8], 6), players).error, /at least 1 midfielder/);
+    // Midfielder starts, a defender on the bench -> fine
+    assert.ok(validateSquad(lineup([3, 4, 6, 7, 8], 5), players).ok);
+  } finally {
+    RULES.composition = saved;
+  }
+});
