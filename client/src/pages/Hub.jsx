@@ -1,5 +1,11 @@
-import { useRef, useState } from 'react';
+import { lazy, Suspense, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
+import GlareHover from '../vendor/react-bits/GlareHover.jsx';
+
+// WebGL effects for the landing hero load after the page, so they never hold up first paint
+const LightRays = lazy(() => import('../vendor/react-bits/LightRays.jsx'));
+const Particles = lazy(() => import('../vendor/react-bits/Particles.jsx'));
+const isSmallScreen = () => typeof window !== 'undefined' && window.matchMedia?.('(max-width: 700px)').matches;
 import { gsap } from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { useData, useTick } from '../app-context.jsx';
@@ -82,13 +88,36 @@ export function Home() {
 }
 
 /** Poster hero with a GSAP entrance: poster rises in, logo spins in, headline splits in, the rest staggers. */
+/** The poster leans towards the mouse in 3D (GSAP quickTo); still for touch and reduced motion. */
+function PosterTilt({ children }) {
+  const ref = useRef(null);
+  useGSAP(() => {
+    const el = ref.current;
+    if (!el || prefersReducedMotion() || !window.matchMedia('(hover: hover)').matches) return undefined;
+    gsap.set(el, { transformPerspective: 900 });
+    const rx = gsap.quickTo(el, 'rotationX', { duration: 0.6, ease: 'power3.out' });
+    const ry = gsap.quickTo(el, 'rotationY', { duration: 0.6, ease: 'power3.out' });
+    const move = (e) => {
+      const r = el.getBoundingClientRect();
+      ry(((e.clientX - r.left) / r.width - 0.5) * 14);
+      rx(-((e.clientY - r.top) / r.height - 0.5) * 10);
+    };
+    const leave = () => { rx(0); ry(0); };
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerleave', leave);
+    return () => { el.removeEventListener('pointermove', move); el.removeEventListener('pointerleave', leave); };
+  }, { scope: ref });
+  return <div ref={ref} className="poster-tilt">{children}</div>;
+}
+
 function Landing({ hub, headline, first, started, live, upcoming }) {
   const scope = useRef(null);
   useGSAP(() => {
     if (prefersReducedMotion()) return;
     // clearProps only what we animate, so React's inline styles (e.g. the label colour) survive
     gsap.timeline({ defaults: { ease: 'power3.out', clearProps: 'transform,opacity' } })
-      .from('.landing-poster', { y: 40, scale: 0.94, opacity: 0, duration: 0.9 })
+      .from('.landing-fx', { opacity: 0, duration: 1.8, ease: 'power1.out' }, 0)
+      .from('.landing-poster', { y: 40, scale: 0.94, opacity: 0, duration: 0.9 }, 0)
       .from('.hero-logo', { scale: 0, rotation: -120, opacity: 0, duration: 0.8, ease: 'back.out(1.6)' }, '-=0.6')
       .from('.landing-side .cat', { y: 12, opacity: 0, duration: 0.5 }, '-=0.5')
       .from('.landing-side > p, .countdown > div, .landing-side .row .btn', { y: 18, opacity: 0, duration: 0.5, stagger: 0.06 }, '-=0.1')
@@ -97,7 +126,25 @@ function Landing({ hub, headline, first, started, live, upcoming }) {
 
   return (
     <section className="landing" ref={scope}>
-      <img className="landing-poster" src="/games-poster.webp" alt="BMESA Games ’27 — 4th to 11th December 2026. 5 classes, 1 crown." />
+      {/* Floodlights and drifting gold sparkles behind the content (React Bits LightRays + Particles) */}
+      <div className="landing-fx" aria-hidden="true">
+        <Suspense fallback={null}>
+          <Particles particleCount={isSmallScreen() ? 60 : 130} particleSpread={11} speed={0.06}
+            particleColors={['#f6d10f', '#ffffff', '#ffd27a']} particleBaseSize={80} sizeRandomness={1.2}
+            alphaParticles moveParticlesOnHover particleHoverFactor={0.5} glow={0.7} twinkle={0.6} clickBurst={false} />
+          <div className="landing-rays">
+            <LightRays raysOrigin="top-center" raysColor="#fff1c4" raysSpeed={0.8} lightSpread={1.1} rayLength={2.4} intensity={1.35} saturation={1.2}
+              followMouse mouseInfluence={0.1} noiseAmount={0.05} distortion={0.04} glow={0.85} haze={0.35}
+              cursorShadow={false} clickPulse={false} opacity={1} maxDevicePixelRatio={isSmallScreen() ? 1.25 : 1.75} />
+          </div>
+        </Suspense>
+      </div>
+      <PosterTilt>
+        <GlareHover mode="loop" interval={4} glareColor="#fff6d6" glareOpacity={0.45} glareSize={35} glareAngle={-35}
+          borderRadius="12px" background="transparent" className="poster-glare">
+          <img className="landing-poster" src="/games-poster.webp" alt="BMESA Games ’27 — 4th to 11th December 2026. 5 classes, 1 crown." />
+        </GlareHover>
+      </PosterTilt>
       <div className="landing-side">
         <div className="hero-title">
           <img className="hero-logo sm" src="/bmesa-logo.png" alt="Biomedical Engineering Department logo" />

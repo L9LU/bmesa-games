@@ -29,6 +29,8 @@ export function Layout() {
 
   return (
     <>
+      {/* Site-wide backdrop: the poster's stadium, text removed, blurred and darkened, slowly drifting */}
+      <div className="site-bg" aria-hidden="true"><div className="site-bg__img" /><div className="site-bg__shade" /></div>
       <header className="top">
         <div className="wrap top-row">
           <Link className="brand" to="/">

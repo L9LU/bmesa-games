@@ -138,7 +138,7 @@ table.t { width: 100%; border-collapse: collapse; font-size: 14px; }
 
 .event-card { text-decoration: none; display: block; transition: transform .1s, box-shadow .1s; }
 .event-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(15,23,42,.08); }
-.cat { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; color: var(--accent-ink); }
+.cat { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; color: var(--cat, var(--accent-ink)); }
 .kv { display: grid; grid-template-columns: 120px 1fr; gap: 6px 12px; font-size: 14px; }
 .kv dt { color: var(--muted); }
 .kv dd { margin: 0; }
@@ -336,3 +336,65 @@ table.t { width: 100%; border-collapse: collapse; font-size: 14px; }
 @media (max-width: 860px) { .fantasy-h1 { font-size: 34px; } .fantasy-type { font-size: 24px; } }
 /* Glow effects (BorderGlow, SpotlightCard) may paint past the content edge; clip sideways without breaking sticky bars */
 main.wrap { overflow-x: clip; }
+
+/* =====================================================================
+   Dark stadium theme: blurred poster backdrop behind every page
+   ===================================================================== */
+body { background: #050a22; }
+.site-bg { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+.site-bg__img { position: absolute; inset: -6%; background: url('/bg-stadium.webp') center 35% / cover no-repeat; animation: bg-drift 48s ease-in-out infinite alternate; will-change: transform; }
+.site-bg__shade { position: absolute; inset: 0; background:
+  radial-gradient(120% 70% at 50% 0%, rgba(31, 51, 176, .25), transparent 60%),
+  linear-gradient(180deg, rgba(5, 10, 34, .45) 0%, rgba(5, 10, 34, .72) 45%, rgba(5, 10, 34, .9) 100%); }
+@keyframes bg-drift { from { transform: scale(1) translate3d(0, 0, 0); } to { transform: scale(1.12) translate3d(-2%, -2%, 0); } }
+
+/* Light text on the dark backdrop; light surfaces reset to dark text */
+main.wrap { color: #e9eeff; --muted: #a7b2d8; --cat: var(--gold); }
+.foot { color: #8e9ac4; }
+.card, .stat, .chip, .deadline, .bench, .tie, .spotlight-card, .border-glow-card, .modal-box, .save-bar .row, .auth {
+  color: var(--ink); --muted: #64748b; --cat: var(--accent-ink);
+}
+.chip.on { background: var(--gold); color: var(--navy); border-color: var(--gold); }
+main.wrap > h1, main.wrap > div > h1, main.wrap h2:not(.card h2):not(.card-h h2) { text-shadow: 0 2px 18px rgba(0, 0, 0, .35); }
+main.wrap a:not(.btn):not(.chip):not(.fx):not(.event-card):not(.crown-team) { color: inherit; }
+.card .empty, .card.empty { color: var(--muted); }
+
+/* Heroes become glass panels so the stadium shows through */
+.landing, .hero {
+  background: linear-gradient(135deg, rgba(20, 31, 107, .62) 0%, rgba(31, 51, 176, .38) 60%, rgba(61, 123, 224, .28) 100%);
+  border: 1px solid rgba(255, 255, 255, .12);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  box-shadow: 0 30px 60px -30px rgba(0, 0, 0, .6);
+}
+
+/* Fantasy title gradient needs light colours on the dark backdrop (see Fantasy.jsx BRAND_GRADIENT) */
+
+@media (prefers-reduced-motion: reduce) { .site-bg__img { animation: none; } }
+
+/* ---------- landing hero effects ---------- */
+.landing { position: relative; overflow: hidden; isolation: isolate; }
+.landing > *:not(.landing-fx) { position: relative; z-index: 1; }
+.landing-fx { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+.landing-fx .particles-container { position: absolute; inset: 0; }
+.landing-rays { position: absolute; inset: 0; }
+.poster-tilt { transform-style: preserve-3d; will-change: transform; }
+.poster-glare { width: 100%; display: block; }
+.poster-glare .landing-poster { box-shadow: 0 24px 50px rgba(0, 0, 0, .45); }
+
+/* ---------- league invites ---------- */
+.invite-card { margin-bottom: 16px; border-top: 4px solid var(--gold); }
+.invite-main { display: flex; gap: 18px; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; }
+.invite-code { display: flex; gap: 6px; margin-top: 6px; }
+.invite-code span { width: 40px; height: 48px; display: grid; place-items: center; border-radius: 10px; background: var(--navy); color: var(--gold); font: 800 28px var(--head); letter-spacing: 0; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .25); }
+.invite-link { display: flex; gap: 8px; flex: 1; min-width: 260px; max-width: 520px; }
+.invite-link input { flex: 1; min-width: 0; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+.invite-actions { margin-top: 14px; }
+.btn.wa { background: #25d366; border-color: #25d366; color: #fff; }
+.btn.wa:hover { background: #1ebe5a; }
+.join-wrap { max-width: 640px; margin: 30px auto; }
+.hero.join-card { display: block; text-align: left; padding: 30px; }
+.join-card h1 { font-size: 40px; }
+@media (max-width: 480px) { .invite-code span { width: 34px; height: 42px; font-size: 24px; } }
+/* Translucent cards inside the hero keep light text (the generic .card rule makes card text dark) */
+.landing .card, .hero .card, .dark .card { color: #fff; --muted: #b9c4ea; }
+.landing .cat, .landing h1, .landing-side > p { text-shadow: 0 1px 12px rgba(0, 0, 0, .55); }

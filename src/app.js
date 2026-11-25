@@ -223,7 +223,7 @@ app.get('/api/fantasy/standings', wrap(async (req, res) => {
     if (!l.length) return bad(res, 'League not found.', 404);
     title = l[0].name;
     rows = await F.standings('WHERE u.id IN (SELECT user_id FROM league_members WHERE league_id = $1)', [l[0].id]);
-    return res.json({ title, code: l[0].code, rows });
+    return res.json({ title, code: l[0].code, league_id: l[0].id, is_owner: !!req.user && req.user.id === l[0].owner_id, rows });
   }
   res.json({ title, rows });
 }));
@@ -235,21 +235,57 @@ app.get('/api/fantasy/leagues', needUser, wrap(async (req, res) => {
   res.json({ leagues: rows });
 }));
 
+// League invite codes: 6 characters from an alphabet without look-alikes (no 0/O, 1/I/L),
+// so they're easy to read out or type from a WhatsApp message. ~1 billion combinations.
+const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const newCode = () => Array.from(crypto.randomBytes(6), (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('');
+const cleanCode = (v) => String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
+
+/** Run `fn(code)` with a fresh code, retrying if it collides with an existing one (unique index). */
+async function withUniqueCode(fn) {
+  for (let attempt = 0; attempt < 6; attempt++) {
+    try { return await fn(newCode()); }
+    catch (e) { if (e.code !== '23505') throw e; } // 23505 = unique_violation
+  }
+  throw new Error('Could not generate a unique league code.');
+}
+
 app.post('/api/fantasy/leagues', needUser, wrap(async (req, res) => {
   const name = String(req.body.name || '').trim().slice(0, 40);
   if (!name) return bad(res, 'Name your league.');
-  const code = crypto.randomBytes(3).toString('hex').toUpperCase();
-  const { rows } = await db.query('INSERT INTO leagues (name, code, owner_id) VALUES ($1,$2,$3) RETURNING *', [name, code, req.user.id]);
-  await db.query('INSERT INTO league_members (league_id, user_id) VALUES ($1,$2)', [rows[0].id, req.user.id]);
+  const league = await withUniqueCode(async (code) =>
+    (await db.query('INSERT INTO leagues (name, code, owner_id) VALUES ($1,$2,$3) RETURNING *', [name, code, req.user.id])).rows[0]);
+  await db.query('INSERT INTO league_members (league_id, user_id) VALUES ($1,$2)', [league.id, req.user.id]);
+  res.json({ league });
+}));
+
+// Public preview for an invite link: lets the join page show which league you're joining
+app.get('/api/fantasy/leagues/code/:code', wrap(async (req, res) => {
+  const { rows } = await db.query(
+    `SELECT l.id, l.name, l.code, u.name AS owner,
+            (SELECT count(*)::int FROM league_members m WHERE m.league_id = l.id) AS members,
+            EXISTS (SELECT 1 FROM league_members m WHERE m.league_id = l.id AND m.user_id = $2) AS joined
+       FROM leagues l LEFT JOIN users u ON u.id = l.owner_id WHERE l.code = $1`, [cleanCode(req.params.code), req.user?.id || 0]);
+  if (!rows.length) return bad(res, 'This invite link isn’t valid any more. Ask for a new one.', 404);
   res.json({ league: rows[0] });
 }));
 
 app.post('/api/fantasy/leagues/join', needUser, wrap(async (req, res) => {
-  const code = String(req.body.code || '').trim().toUpperCase();
+  const code = cleanCode(req.body.code);
   const { rows } = await db.query('SELECT * FROM leagues WHERE code = $1', [code]);
   if (!rows.length) return bad(res, 'No league with that code.');
   await db.query('INSERT INTO league_members (league_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [rows[0].id, req.user.id]);
   res.json({ league: rows[0] });
+}));
+
+// League owner: issue a new code (old code and links stop working; members stay)
+app.post('/api/fantasy/leagues/:id/code', needUser, wrap(async (req, res) => {
+  const { rows } = await db.query('SELECT owner_id FROM leagues WHERE id = $1', [+req.params.id]);
+  if (!rows.length) return bad(res, 'League not found.', 404);
+  if (rows[0].owner_id !== req.user.id) return bad(res, 'Only the league creator can change the code.', 403);
+  const league = await withUniqueCode(async (code) =>
+    (await db.query('UPDATE leagues SET code = $2 WHERE id = $1 RETURNING *', [+req.params.id, code])).rows[0]);
+  res.json({ league });
 }));
 
 // ---------- organiser tools ----------

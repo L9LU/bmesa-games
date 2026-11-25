@@ -9,7 +9,7 @@ import { AuthForm } from './pages/Auth.jsx';
 
 // Fantasy and Admin pages load on demand, so the home page downloads less on mobile data
 const lazyPages = (load, names) => Object.fromEntries(names.map((n) => [n, lazy(() => load().then((m) => ({ default: m[n] })))]));
-const Fantasy = lazyPages(() => import('./pages/Fantasy.jsx'), ['PickTeam', 'Points', 'Leagues', 'Stats', 'Fixtures', 'Rules']);
+const Fantasy = lazyPages(() => import('./pages/Fantasy.jsx'), ['PickTeam', 'Points', 'Leagues', 'JoinLeague', 'Stats', 'Fixtures', 'Rules']);
 const Admin = lazyPages(() => import('./pages/Admin.jsx'), ['Results', 'FixtureStats', 'AdminMedals', 'News', 'Players', 'TeamsAdmin', 'Gameweeks', 'Users']);
 
 function StaffOnly({ children }) {
@@ -38,6 +38,7 @@ function App() {
         <Route path="fantasy/points/:userId" element={<Fantasy.Points />} />
         <Route path="fantasy/leagues" element={<Fantasy.Leagues />} />
         <Route path="fantasy/leagues/:key" element={<Fantasy.Leagues />} />
+        <Route path="fantasy/join/:code" element={<Fantasy.JoinLeague />} />
         <Route path="fantasy/stats" element={<Fantasy.Stats />} />
         <Route path="fantasy/fixtures" element={<Fantasy.Fixtures />} />
         <Route path="fantasy/rules" element={<Fantasy.Rules />} />

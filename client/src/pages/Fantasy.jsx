@@ -14,7 +14,7 @@ import StarBorder from '../vendor/react-bits/StarBorder.jsx';
 import TextType from '../vendor/react-bits/TextType.jsx';
 
 // House settings for the React Bits pieces used across the fantasy pages
-const BRAND_GRADIENT = ['#141f6b', '#1f33b0', '#b3262c', '#1f33b0', '#141f6b'];
+const BRAND_GRADIENT = ['#ffffff', '#f6d10f', '#ffb4b4', '#f6d10f', '#ffffff']; // light: titles sit on the dark stadium backdrop
 const Reveal = ({ children, ...props }) => (
   <AnimatedContent distance={32} duration={0.7} ease="power3.out" threshold={0.1} {...props}>{children}</AnimatedContent>
 );
@@ -553,11 +553,97 @@ export function StandingsTable({ rows }) {
   );
 }
 
+/** Invite box for a private league: code, link, copy / WhatsApp / share, and a new code for the creator. */
+function InvitePanel({ table, onNewCode }) {
+  const { toast } = useApp();
+  const link = `${window.location.origin}/fantasy/join/${table.code}`;
+  const message = `Join my BMESA Games fantasy league "${table.title}" 🏆 ${link} (code: ${table.code})`;
+  async function copy(text, what) {
+    try { await navigator.clipboard.writeText(text); toast(`${what} copied`); }
+    catch { window.prompt(`Copy the ${what.toLowerCase()}:`, text); }
+  }
+  async function share() {
+    try { await navigator.share({ title: table.title, text: `Join my BMESA Games fantasy league "${table.title}" 🏆`, url: link }); }
+    catch (e) { if (e.name !== 'AbortError') copy(link, 'Link'); }
+  }
+  async function regenerate() {
+    if (!confirm('Make a new invite code? The old code and link stop working straight away. Current members stay in the league.')) return;
+    try { await api(`/api/fantasy/leagues/${table.league_id}/code`, { body: {} }); toast('New invite code ready'); onNewCode(); }
+    catch (e) { toast(e.message, true); }
+  }
+  return (
+    <section className="card invite-card">
+      <div className="invite-main">
+        <div>
+          <div className="cat">Invite friends</div>
+          <div className="invite-code" aria-label={`Invite code ${table.code.split('').join(' ')}`}>
+            {table.code.split('').map((c, i) => <span key={`${table.code}-${i}`}>{c}</span>)}
+          </div>
+        </div>
+        <div className="invite-link">
+          <input readOnly value={link} aria-label="Invite link" onFocus={(e) => e.target.select()} />
+          <button className="btn primary" onClick={() => copy(link, 'Link')}>Copy link</button>
+        </div>
+      </div>
+      <div className="row invite-actions">
+        <a className="btn wa" href={`https://wa.me/?text=${encodeURIComponent(message)}`} target="_blank" rel="noopener noreferrer">Share on WhatsApp</a>
+        {typeof navigator !== 'undefined' && navigator.share && <button className="btn" onClick={share}>Share…</button>}
+        <button className="btn" onClick={() => copy(table.code, 'Code')}>Copy code</button>
+        {table.is_owner && <button className="btn sm danger" onClick={regenerate} title="Old code and link stop working">New code</button>}
+      </div>
+    </section>
+  );
+}
+
+/** /fantasy/join/:code — preview the league from an invite link, then join (after login/sign-up if needed). */
+export function JoinLeague() {
+  const { code } = useParams();
+  const { user, toast } = useApp();
+  const navigate = useNavigate();
+  const { data, error } = useData(`/api/fantasy/leagues/code/${encodeURIComponent(code)}`, { deps: [user?.id] });
+  const [busy, setBusy] = useState(false);
+  if (error) return <div className="card empty">{error} <Link to="/fantasy/leagues">Go to leagues</Link></div>;
+  if (!data) return <Loading />;
+  const l = data.league;
+  const next = encodeURIComponent(`/fantasy/join/${l.code}`);
+  async function join() {
+    setBusy(true);
+    try { await api('/api/fantasy/leagues/join', { body: { code: l.code } }); toast(`You joined ${l.name}!`); navigate(`/fantasy/leagues/${l.id}`); }
+    catch (e) { toast(e.message, true); setBusy(false); }
+  }
+  return (
+    <Reveal className="join-wrap">
+      <section className="hero join-card">
+        <div className="cat" style={{ color: 'var(--gold)' }}>You’re invited to a fantasy league</div>
+        <h1 style={{ margin: '6px 0' }}><GradientText colors={BRAND_GRADIENT} animationSpeed={6}>{l.name}</GradientText></h1>
+        <p style={{ color: '#dbe4ff' }}>{l.owner ? `Created by ${l.owner} · ` : ''}{l.members} manager{l.members === 1 ? '' : 's'} · code <b>{l.code}</b></p>
+        {l.joined ? (
+          <div className="row"><span className="pill ft">You’re in this league</span><Link className="btn gold" to={`/fantasy/leagues/${l.id}`}>View the table</Link></div>
+        ) : user ? (
+          <div className="row">
+            <StarBorder as="button" className="save-star" onClick={join} disabled={busy} theme="dark"
+              backgroundColor="#f6d10f" textColor="#141f6b" color="#ffffff" radius={8} thickness={1.5} stars={2} sparkle>
+              {busy ? 'Joining…' : 'Join league'}
+            </StarBorder>
+            <Link className="btn ghost" to="/fantasy/leagues">Not now</Link>
+          </div>
+        ) : (
+          <div className="row">
+            <Link className="btn gold" to={`/signup?next=${next}`}>Sign up to join</Link>
+            <Link className="btn ghost" to={`/login?next=${next}`}>Log in to join</Link>
+          </div>
+        )}
+        <p className="small" style={{ color: '#b9c4ea', marginTop: 14 }}>You’ll appear in the table once you’ve picked your fantasy team.</p>
+      </section>
+    </Reveal>
+  );
+}
+
 export function Leagues() {
   const { user, toast } = useApp();
   const { key = 'overall' } = useParams();
   const navigate = useNavigate();
-  const { data: table, error } = useData(`/api/fantasy/standings?league=${encodeURIComponent(key)}`);
+  const { data: table, error, reload: reloadTable } = useData(`/api/fantasy/standings?league=${encodeURIComponent(key)}`);
   const { data: mine, reload } = useData(user ? '/api/fantasy/leagues' : null);
   const [newName, setNewName] = useState('');
   const [code, setCode] = useState('');
@@ -576,10 +662,11 @@ export function Leagues() {
         {user?.level && chip(`level:${user.level}`, user.level)}
         {(mine?.leagues || []).map((l) => chip(String(l.id), `${l.name} · ${l.members}`))}
       </div>
+      {table?.code && <InvitePanel table={table} onNewCode={() => { reloadTable(); reload(); }} />}
       <Reveal className="pick-layout" stagger={0.12}>
         <section className="card flush">
           {!table ? <Loading error={error} /> : <>
-            <div className="card-h"><h2>{table.title}</h2>{table.code && <span className="small">Invite code: <b className="pill">{table.code}</b></span>}</div>
+            <div className="card-h"><h2>{table.title}</h2>{table.code && <span className="small muted">{table.rows.length} manager{table.rows.length === 1 ? '' : 's'}</span>}</div>
             <StandingsTable rows={table.rows} />
           </>}
         </section>
