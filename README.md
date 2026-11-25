@@ -46,7 +46,24 @@ Tests for the scoring rules: `npm test`.
 
 ## Put it online (free)
 
-1. **Database**: create a free Postgres database at [neon.tech](https://neon.tech) and copy its connection string (`postgresql://…`).
+Both options use a free Postgres database from [neon.tech](https://neon.tech) and this repo on GitHub.
+
+### Option A — Vercel (recommended: free and doesn't sleep)
+
+The React pages are served from Vercel's CDN and the API runs as a serverless function (`api/index.js`). After a quiet spell the first request takes ~1–3 seconds, instead of ~30–60 seconds on Render's free plan.
+
+1. In Neon, click **Connect**, turn on **Connection pooling**, and copy that connection string (the host contains `-pooler`).
+2. On [vercel.com](https://vercel.com): **Add New → Project**, import the GitHub repo. Leave the framework and build settings as they are (`vercel.json` sets them).
+3. Under **Environment Variables** add:
+   - `DATABASE_URL` = the pooled Neon connection string
+   - `ADMIN_EMAILS` = your email (and other admins', comma-separated)
+   - `JWT_SECRET` = a long random string. Generate one in PowerShell with
+     `[Convert]::ToBase64String((1..48 | ForEach-Object { Get-Random -Max 256 }))`
+4. **Deploy**. Functions run in Frankfurt (`fra1`), next to the Neon database. If your Neon project is in another region, change `regions` in `vercel.json` to match.
+
+### Option B — Render
+
+1. **Database**: copy the Neon connection string (`postgresql://…`).
 2. **Code**: push this folder to a GitHub repository.
 3. **Hosting**: on [render.com](https://render.com), choose *New → Blueprint* and select the repo (it reads `render.yaml`). When asked, set:
    - `DATABASE_URL` = the Neon connection string
