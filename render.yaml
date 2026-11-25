@@ -2,6 +2,7 @@ services:
   - type: web
     name: bmesa-games
     runtime: node
+    region: frankfurt   # keep in the same region as the Neon database
     plan: free
     buildCommand: npm install && npm run build
     startCommand: npm start
