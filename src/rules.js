@@ -2,14 +2,19 @@
 
 const RULES = {
   budget: 700,                 // tenths of a million: 700 = 70.0m
-  squadSize: 8,
-  composition: { GK: 2, DEF: 2, MID: 2, FWD: 2 },
+  // 7-a-side: 7 start (1 GK + 6 outfield), 2 on the bench (1 GK + 1 outfield) = squad of 9
+  squadSize: 9,
+  composition: { GK: 2, DEF: 2, MID: 2, FWD: 2 }, // minimum per position (exactly 2 GKs)
+  extraOutfield: 1,                                // plus 1 outfield player of any position
   maxPerTeam: 3,
   freeTransfers: 2,            // per gameweek, after your first gameweek
   hitCost: 4,                  // points per extra transfer
-  // Slots: 1 = starting GK, 2..6 = starting outfield, 7 = bench GK, 8 = bench outfield
-  starterSlots: [1, 2, 3, 4, 5, 6],
-  // Every position must be represented in the starting six (no benching both defenders, etc.)
+  // Slots: 1 = starting GK, 2..7 = starting outfield, 8 = bench GK, 9 = bench outfield
+  starterSlots: [1, 2, 3, 4, 5, 6, 7],
+  gkSlots: [1, 8],
+  benchGkSlot: 8,
+  benchOutfieldSlot: 9,
+  // Every position must be represented in the starting seven (no benching both defenders, etc.)
   minStarters: { GK: 1, DEF: 1, MID: 1, FWD: 1 },
 };
 
@@ -63,7 +68,7 @@ function validateSquad(picks, players) {
   if (!Array.isArray(picks) || picks.length !== RULES.squadSize) return fail(`Pick exactly ${RULES.squadSize} players.`);
   const slots = new Set(picks.map((p) => p.slot));
   const ids = new Set(picks.map((p) => p.player_id));
-  if (slots.size !== RULES.squadSize || [...slots].some((s) => s < 1 || s > 8)) return fail('Each slot 1–8 must be filled once.');
+  if (slots.size !== RULES.squadSize || [...slots].some((s) => s < 1 || s > RULES.squadSize)) return fail(`Each slot 1–${RULES.squadSize} must be filled once.`);
   if (ids.size !== RULES.squadSize) return fail('A player can only be picked once.');
 
   const count = { GK: 0, DEF: 0, MID: 0, FWD: 0 };
@@ -73,15 +78,16 @@ function validateSquad(picks, players) {
     const pl = players.get(pick.player_id);
     if (!pl) return fail('Unknown player in squad.');
     if (!pl.active) return fail(`${pl.name} is no longer available.`);
-    const isGkSlot = pick.slot === 1 || pick.slot === 7;
+    const isGkSlot = RULES.gkSlots.includes(pick.slot);
     if (isGkSlot && pl.position !== 'GK') return fail('Goalkeeper slots must hold goalkeepers.');
     if (!isGkSlot && pl.position === 'GK') return fail('Goalkeepers can only go in goalkeeper slots.');
     count[pl.position]++;
     perTeam[pl.team_id] = (perTeam[pl.team_id] || 0) + 1;
     cost += pl.price;
   }
-  for (const [pos, n] of Object.entries(RULES.composition)) {
-    if (count[pos] !== n) return fail(`You need exactly ${n} ${pos}s.`);
+  if (count.GK !== RULES.composition.GK) return fail(`You need exactly ${RULES.composition.GK} goalkeepers.`);
+  for (const pos of ['DEF', 'MID', 'FWD']) {
+    if (count[pos] < RULES.composition[pos]) return fail(`You need at least ${RULES.composition[pos]} ${pos}s.`);
   }
   if (Object.values(perTeam).some((n) => n > RULES.maxPerTeam)) return fail(`Max ${RULES.maxPerTeam} players from one team.`);
 
@@ -89,7 +95,7 @@ function validateSquad(picks, players) {
   for (const pick of picks) if (RULES.starterSlots.includes(pick.slot)) started[players.get(pick.player_id).position]++;
   const WORD = { GK: 'goalkeeper', DEF: 'defender', MID: 'midfielder', FWD: 'forward' };
   for (const [pos, n] of Object.entries(RULES.minStarters)) {
-    if (started[pos] < n) return fail(`Your starting six needs at least ${n} ${WORD[pos]}${n > 1 ? 's' : ''}.`);
+    if (started[pos] < n) return fail(`Your starting seven needs at least ${n} ${WORD[pos]}${n > 1 ? 's' : ''}.`);
   }
   if (cost > RULES.budget) return fail(`Squad costs ${(cost / 10).toFixed(1)}m, over the ${(RULES.budget / 10).toFixed(1)}m budget.`);
 
@@ -116,16 +122,18 @@ function scoreSquad(picks, info, hit = 0) {
   // Starters count by default
   for (const s of RULES.starterSlots) if (bySlot[s]) bySlot[s].multiplier = 1;
 
-  // Auto-subs: GK for GK, one outfield bench player for the first outfield starter who missed out
-  if (bySlot[1] && bySlot[7] && missed(bySlot[1]) && get(bySlot[7].player_id).played) {
+  // Auto-subs: bench GK for the starting GK, bench outfielder for the first outfield starter who missed out.
+  // (With at least 2 per position and one outfield sub, this can never leave a position with no starter.)
+  const benchGk = bySlot[RULES.benchGkSlot], benchOut = bySlot[RULES.benchOutfieldSlot];
+  if (bySlot[1] && benchGk && missed(bySlot[1]) && get(benchGk.player_id).played) {
     bySlot[1].multiplier = 0; bySlot[1].subOut = true;
-    bySlot[7].multiplier = 1; bySlot[7].subIn = true;
+    benchGk.multiplier = 1; benchGk.subIn = true;
   }
-  if (bySlot[8] && get(bySlot[8].player_id).played) {
-    const out = [2, 3, 4, 5, 6].map((s) => bySlot[s]).find((p) => p && missed(p));
+  if (benchOut && get(benchOut.player_id).played) {
+    const out = RULES.starterSlots.filter((s) => s !== 1).map((s) => bySlot[s]).find((p) => p && missed(p));
     if (out) {
       out.multiplier = 0; out.subOut = true;
-      bySlot[8].multiplier = 1; bySlot[8].subIn = true;
+      benchOut.multiplier = 1; benchOut.subIn = true;
     }
   }
 

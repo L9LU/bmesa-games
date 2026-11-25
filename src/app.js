@@ -6,6 +6,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('./db');
 const { seedBase } = require('./seed');
+const { migrate } = require('./migrations');
 const F = require('./fantasy');
 const { RULES, POINTS } = require('./rules');
 
@@ -23,7 +24,10 @@ function ready() {
   if (!readyPromise) {
     readyPromise = (async () => {
       await db.init();
-      await db.locked(async (q) => { if (await seedBase(q)) console.log('Seeded the games programme.'); });
+      await db.locked(async (q) => {
+        if (await seedBase(q)) console.log('Seeded the games programme.');
+        await migrate(q);
+      });
     })().catch((e) => { readyPromise = null; throw e; });
   }
   return readyPromise;

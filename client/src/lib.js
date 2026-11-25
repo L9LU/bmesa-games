@@ -45,17 +45,35 @@ export function shortName(name) {
 }
 
 /**
+ * What a partly picked squad still needs: minimum places per position, the flexible
+ * "any outfield" places left, and how many players are already taken from each team.
+ */
+export function squadNeeds(rules, picked) {
+  const count = { GK: 0, DEF: 0, MID: 0, FWD: 0 };
+  const teamCount = {};
+  for (const p of picked) { count[p.position]++; teamCount[p.team_id] = (teamCount[p.team_id] || 0) + 1; }
+  const need = {};
+  let overflow = 0; // outfield players beyond the minimum already use up flexible places
+  for (const pos of Object.keys(count)) {
+    need[pos] = Math.max(0, rules.composition[pos] - count[pos]);
+    if (pos !== 'GK') overflow += Math.max(0, count[pos] - rules.composition[pos]);
+  }
+  return { need, extra: Math.max(0, (rules.extraOutfield || 0) - overflow), teamCount };
+}
+
+/**
  * Cheapest way to fill the remaining squad places.
- * pool: available players not already picked; need: { GK, DEF, MID, FWD } places still to fill;
- * teamCount: { team_id: players already picked from that team }.
+ * pool: available players not already picked; need: { GK, DEF, MID, FWD } minimum places still to fill;
+ * extra: flexible places that any outfield player can fill; teamCount: { team_id: already picked }.
  * Returns { cost, players } or null if the places can't be filled at all.
  * Branch-and-bound over players sorted by price, so it's fast for a few hundred players.
  */
-export function cheapestCompletion(pool, need, teamCount, maxPerTeam) {
+export function cheapestCompletion(pool, need, extra, teamCount, maxPerTeam) {
   const list = [...pool].sort((a, b) => a.price - b.price);
   const cnt = { ...need };
   const team = { ...teamCount };
   const chosen = [];
+  let flex = extra;
   let best = Infinity, bestSet = null, steps = 0;
   (function rec(i, cost, left) {
     if (++steps > 300000) return; // safety cap; result so far is still a valid squad
@@ -65,13 +83,20 @@ export function cheapestCompletion(pool, need, teamCount, maxPerTeam) {
     for (let j = i; j < i + left; j++) bound += list[j].price;
     if (bound >= best) return;
     const p = list[i];
-    if (cnt[p.position] > 0 && (team[p.team_id] || 0) < maxPerTeam) {
-      cnt[p.position]--; team[p.team_id] = (team[p.team_id] || 0) + 1; chosen.push(p);
-      rec(i + 1, cost + p.price, left - 1);
-      cnt[p.position]++; team[p.team_id]--; chosen.pop();
+    if ((team[p.team_id] || 0) < maxPerTeam) {
+      // A player fills a required place for their position first, otherwise a flexible outfield place
+      const usesNeed = cnt[p.position] > 0;
+      const usesFlex = !usesNeed && p.position !== 'GK' && flex > 0;
+      if (usesNeed || usesFlex) {
+        if (usesNeed) cnt[p.position]--; else flex--;
+        team[p.team_id] = (team[p.team_id] || 0) + 1; chosen.push(p);
+        rec(i + 1, cost + p.price, left - 1);
+        if (usesNeed) cnt[p.position]++; else flex++;
+        team[p.team_id]--; chosen.pop();
+      }
     }
     rec(i + 1, cost, left);
-  })(0, 0, Object.values(cnt).reduce((s, n) => s + Math.max(0, n), 0));
+  })(0, 0, Object.values(cnt).reduce((s, n) => s + Math.max(0, n), 0) + extra);
   return bestSet ? { cost: best, players: bestSet } : null;
 }
 

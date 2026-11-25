@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useApp, useData } from '../app-context.jsx';
 import { Loading, Modal, Shirt, StatusPill, TeamLogo, TeamName } from '../components.jsx';
-import { api, cheapestCompletion, countdown, fmtShort, fmtTime, money, POS, POS_NAME, shortName, teamSide } from '../lib.js';
+import { api, cheapestCompletion, squadNeeds, countdown, fmtShort, fmtTime, money, POS, POS_NAME, shortName, teamSide } from '../lib.js';
 
 const nextGw = (b) => b.gameweeks.find((g) => g.state === 'next');
 const useBoot = () => useData('/api/fantasy/bootstrap');
@@ -62,10 +62,14 @@ export function PlayerModal({ b, p, onClose }) {
 // ======================================================================
 // Pick team
 // ======================================================================
-const ALL_SLOTS = [1, 2, 3, 4, 5, 6, 7, 8];
-const OUT_SLOTS = [2, 3, 4, 5, 6];
-const isGkSlot = (s) => s === 1 || s === 7;
-const canSwap = (a, c) => (a >= 7) !== (c >= 7) && isGkSlot(a) === isGkSlot(c);
+// 7-a-side: slot 1 = GK, 2..7 = outfield starters (2-2-2), 8 = bench GK, 9 = bench outfield (any position)
+const ALL_SLOTS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+const OUT_SLOTS = [2, 3, 4, 5, 6, 7];
+const BENCH_GK = 8, BENCH_OUT = 9;
+const isGkSlot = (s) => s === 1 || s === BENCH_GK;
+const isBench = (s) => s >= BENCH_GK;
+const isStarter = (s) => !isBench(s);
+const canSwap = (a, c) => isBench(a) !== isBench(c) && isGkSlot(a) === isGkSlot(c);
 
 function savedState(me) {
   const s = { squad: {}, cap: null, vice: null };
@@ -102,22 +106,26 @@ function Picker({ b, reload, toast }) {
   const cost = players.reduce((s, p) => s + p.price, 0);
   const counts = (squad = S.squad) => { const c = { GK: 0, DEF: 0, MID: 0, FWD: 0 }; for (const id of Object.values(squad)) if (id) c[byId.get(id).position]++; return c; };
   const perTeam = (squad = S.squad) => { const c = {}; for (const id of Object.values(squad)) if (id) { const t = byId.get(id).team_id; c[t] = (c[t] || 0) + 1; } return c; };
-  // The position each empty slot is waiting for. Outfield gaps fill the pitch as DEF, DEF, MID, MID, FWD
-  // and the leftover position goes on the bench, so an empty squad shows a 2-2-2 squad (2-2-1 + FWD sub).
+  // The position each empty slot is waiting for. Required places fill the pitch as DEF, DEF, MID, MID,
+  // FWD, FWD (a 2-2-2); the flexible extra outfield place ('ANY') goes on the bench.
   const slotLabels = (squad = S.squad) => {
-    const c = counts(squad);
-    const queue = ['DEF', 'MID', 'FWD'].flatMap((pos) => Array(Math.max(0, R.composition[pos] - c[pos])).fill(pos));
-    const labels = { 1: 'GK', 7: 'GK' };
-    for (const s of [...OUT_SLOTS, 8]) if (!squad[s]) labels[s] = queue.shift();
+    const { need } = squadNeeds(R, Object.values(squad).filter(Boolean).map((id) => byId.get(id)));
+    const queue = ['DEF', 'MID', 'FWD'].flatMap((pos) => Array(need[pos]).fill(pos));
+    const labels = { 1: 'GK', [BENCH_GK]: 'GK' };
+    for (const s of [...OUT_SLOTS, BENCH_OUT]) if (!squad[s]) labels[s] = queue.shift() || 'ANY';
     return labels;
   };
+  const maxFor = (pos) => (pos === 'GK' ? R.composition.GK : R.composition[pos] + R.extraOutfield);
   const fits = (p, slot, squad = S.squad) => {
     if (Object.values(squad).includes(p.id)) return false;
     if (isGkSlot(slot) !== (p.position === 'GK')) return false;
-    if (!squad[slot] && !isGkSlot(slot) && slotLabels(squad)[slot] !== p.position) return false;
+    if (!squad[slot] && !isGkSlot(slot)) {
+      const label = slotLabels(squad)[slot];
+      if (label !== 'ANY' && label !== p.position) return false;
+    }
     const cur = squad[slot] && byId.get(squad[slot]);
     const c = counts(squad); if (cur) c[cur.position]--;
-    if (c[p.position] >= R.composition[p.position]) return false;
+    if (c[p.position] >= maxFor(p.position)) return false;
     const t = perTeam(squad); if (cur) t[cur.team_id]--;
     return (t[p.team_id] || 0) < R.maxPerTeam;
   };
@@ -132,7 +140,7 @@ function Picker({ b, reload, toast }) {
     if (!slot) return toast('No free slot for that player.', true);
     setS((prev) => {
       const n = { ...prev, squad: { ...prev.squad, [slot]: p.id } };
-      if (slot > 1 && slot <= 6) { if (!n.cap) n.cap = p.id; else if (!n.vice) n.vice = p.id; }
+      if (slot > 1 && isStarter(slot)) { if (!n.cap) n.cap = p.id; else if (!n.vice) n.vice = p.id; }
       return n;
     });
     setSel(null);
@@ -195,21 +203,22 @@ function Picker({ b, reload, toast }) {
 
     // Random picks failed: fill the empty places as cheaply as possible, if that fits the budget
     const picked = Object.values(S.squad).filter(Boolean).map((id) => byId.get(id));
-    const need = { ...R.composition };
-    const teamCount = {};
-    for (const p of picked) { need[p.position]--; teamCount[p.team_id] = (teamCount[p.team_id] || 0) + 1; }
+    const { need, extra, teamCount } = squadNeeds(R, picked);
     const spent = picked.reduce((s, p) => s + p.price, 0);
-    const fill = cheapestCompletion(active.filter((p) => !picked.includes(p)), need, teamCount, R.maxPerTeam);
+    const fill = cheapestCompletion(active.filter((p) => !picked.includes(p)), need, extra, teamCount, R.maxPerTeam);
     if (fill && spent + fill.cost <= R.budget) {
       const squad = { ...S.squad };
       const lab = slotLabels(S.squad);
       const open = [...free];
-      for (const p of fill.players) { const s = open.find((x) => lab[x] === p.position); open.splice(open.indexOf(s), 1); squad[s] = p.id; }
+      const place = (p, match) => { const s = open.find((x) => match(lab[x])); if (s === undefined) return false; open.splice(open.indexOf(s), 1); squad[s] = p.id; return true; };
+      // Required places first (exact position), then the flexible 'ANY' place
+      const leftover = fill.players.filter((p) => !place(p, (l) => l === p.position));
+      for (const p of leftover) place(p, (l) => l === 'ANY');
       return applyAutoSquad(squad);
     }
 
     // No affordable completion: explain whether it's the player list or the user's own picks
-    const fromScratch = cheapestCompletion(active, R.composition, {}, R.maxPerTeam);
+    const fromScratch = cheapestCompletion(active, R.composition, R.extraOutfield, {}, R.maxPerTeam);
     if (!fromScratch || fromScratch.cost > R.budget) {
       toast(`There aren't enough affordable players yet to build a squad under ${money(R.budget)}. Organisers are still adding players — check back soon.`, true);
     } else {
@@ -266,10 +275,10 @@ function Picker({ b, reload, toast }) {
 
   // Pitch rows by position, mixing picked players and labelled empty slots
   const posOf = (s) => (S.squad[s] ? byId.get(S.squad[s]).position : labels[s]);
-  const rows = ['DEF', 'MID', 'FWD'].map((pos) => OUT_SLOTS.filter((s) => posOf(s) === pos)).filter((r) => r.length);
+  const rows = ['DEF', 'MID', 'FWD', 'ANY'].map((pos) => OUT_SLOTS.filter((s) => posOf(s) === pos)).filter((r) => r.length);
 
   let list = b.players.filter((p) => p.active);
-  if (sel) list = list.filter((p) => p.position === labels[sel]);
+  if (sel) list = list.filter((p) => (labels[sel] === 'ANY' ? p.position !== 'GK' : p.position === labels[sel]));
   if (f.pos !== 'ALL') list = list.filter((p) => p.position === f.pos);
   if (f.team !== 'ALL') list = list.filter((p) => p.team_id === +f.team);
   if (f.q) list = list.filter((p) => p.name.toLowerCase().includes(f.q.toLowerCase()));
@@ -304,7 +313,7 @@ function Picker({ b, reload, toast }) {
             <div className="prow"><Card slot={1} /></div>
             {rows.map((r, i) => <div className="prow" key={i}>{r.map((s) => <Card key={s} slot={s} />)}</div>)}
           </div>
-          <div className="bench"><h4>Substitutes</h4><div className="prow"><Card slot={7} /><Card slot={8} /></div></div>
+          <div className="bench"><h4>Substitutes</h4><div className="prow"><Card slot={BENCH_GK} /><Card slot={BENCH_OUT} /></div></div>
           {gw && (
             <div className="save-bar">
               <div style={{ flex: 1, minWidth: 180 }}><input aria-label="Team name" maxLength={30} placeholder="Team name" value={name} onChange={(e) => setName(e.target.value)} style={{ width: '100%' }} /></div>
@@ -315,11 +324,11 @@ function Picker({ b, reload, toast }) {
               </div>
             </div>
           )}
-          <p className="small muted">Squad of {R.squadSize}: 2 goalkeepers, 2 defenders, 2 midfielders, 2 forwards. Max {R.maxPerTeam} from one level. Budget {money(R.budget)}. Tap a player to captain, substitute or transfer them.</p>
+          <p className="small muted">Squad of {R.squadSize}: 2 goalkeepers, at least 2 defenders, 2 midfielders and 2 forwards, plus 1 extra outfield player of any position. 7 start (keeper + 6 outfield), 2 on the bench. Max {R.maxPerTeam} from one level. Budget {money(R.budget)}. Tap a player to captain, substitute or transfer them.</p>
         </div>
 
         <div className="card flush">
-          <div className="card-h"><h3>{sel ? `Choose a ${POS_NAME[labels[sel]].toLowerCase()}` : 'Players'}</h3>{sel && <button className="btn sm" onClick={() => setSel(null)}>Show all</button>}</div>
+          <div className="card-h"><h3>{sel ? (labels[sel] === 'ANY' ? 'Choose any outfield player' : `Choose a ${POS_NAME[labels[sel]].toLowerCase()}`) : 'Players'}</h3>{sel && <button className="btn sm" onClick={() => setSel(null)}>Show all</button>}</div>
           <div className="filters">
             <input type="search" placeholder="Search players" value={f.q} onChange={setFilter('q')} />
             <select value={f.pos} onChange={setFilter('pos')}><option value="ALL">All positions</option>{POS.map((x) => <option key={x} value={x}>{POS_NAME[x]}s</option>)}</select>
@@ -354,12 +363,12 @@ function Picker({ b, reload, toast }) {
         <Modal title={menuPlayer.name} onClose={() => setMenu(null)}>
           <div className="row" style={{ marginBottom: 14 }}><span className={`pos-tag pos-${menuPlayer.position}`}>{menuPlayer.position}</span><b>{menuPlayer.team}</b><span className="muted">{money(menuPlayer.price)} · {menuPlayer.total_points} pts</span></div>
           <div className="menu-list">
-            {gw && menu <= 6 && <>
+            {gw && isStarter(menu) && <>
               <button className="btn" disabled={S.cap === menuPlayer.id} onClick={() => menuAction(menu, 'cap')}>Make captain</button>
               <button className="btn" disabled={S.vice === menuPlayer.id} onClick={() => menuAction(menu, 'vice')}>Make vice-captain</button>
             </>}
             {gw && <>
-              <button className="btn" onClick={() => menuAction(menu, 'sub')}>{menu <= 6 ? 'Move to bench' : 'Bring onto pitch'}</button>
+              <button className="btn" onClick={() => menuAction(menu, 'sub')}>{isStarter(menu) ? 'Move to bench' : 'Bring onto pitch'}</button>
               <button className="btn danger" onClick={() => menuAction(menu, 'out')}>Transfer out</button>
             </>}
             <button className="btn" onClick={() => menuAction(menu, 'info')}>View stats</button>
@@ -387,7 +396,7 @@ function Landing({ b }) {
         <div className="hero-side">
           <h3>How it works</h3>
           <ul style={{ margin: 0, paddingLeft: 18, color: '#cbd5e1' }}>
-            <li>{money(b.rules.budget)} budget, squad of {b.rules.squadSize}</li><li>2 GK · 2 DEF · 2 MID · 2 FWD</li>
+            <li>{money(b.rules.budget)} budget, squad of {b.rules.squadSize}</li><li>7-a-side: keeper + 2 DEF · 2 MID · 2 FWD</li><li>Bench: a keeper + any outfield player</li>
             <li>Max {b.rules.maxPerTeam} players per level</li><li>Captain scores double</li><li>{b.rules.freeTransfers} free transfers per gameweek</li>
           </ul>
           <p style={{ marginTop: 12 }}><Link to="/fantasy/rules" style={{ color: 'var(--gold)' }}>Full rules & scoring →</Link></p>
@@ -423,8 +432,8 @@ export function Points() {
 
   const PCard = ({ l }) => {
     const p = byId.get(l.player_id);
-    const pts = l.slot >= 7 && !l.subIn ? l.points : l.points * l.multiplier;
-    const dim = (l.slot <= 6 && l.subOut) || (l.slot >= 7 && !l.subIn);
+    const pts = isBench(l.slot) && !l.subIn ? l.points : l.points * l.multiplier;
+    const dim = (isStarter(l.slot) && l.subOut) || (isBench(l.slot) && !l.subIn);
     return (
       <button className={`pcard ${dim ? 'dim' : ''}`} onClick={() => setInfo(p)}>
         {l.is_captain ? <span className="badge">C</span> : l.is_vice ? <span className="badge v">V</span> : null}
@@ -436,7 +445,7 @@ export function Points() {
 
   let body = <div className="card empty">This manager had no team for this gameweek.</div>;
   if (sc) {
-    const out = sc.lineup.filter((l) => l.slot > 1 && l.slot <= 6);
+    const out = sc.lineup.filter((l) => l.slot > 1 && isStarter(l.slot));
     const rows = ['DEF', 'MID', 'FWD'].map((pos) => out.filter((l) => byId.get(l.player_id).position === pos)).filter((r) => r.length);
     body = (
       <div className="pick-layout">
@@ -445,7 +454,7 @@ export function Points() {
             <div className="prow"><PCard l={sc.lineup.find((l) => l.slot === 1)} /></div>
             {rows.map((r, i) => <div className="prow" key={i}>{r.map((l) => <PCard key={l.slot} l={l} />)}</div>)}
           </div>
-          <div className="bench"><h4>Substitutes</h4><div className="prow">{sc.lineup.filter((l) => l.slot >= 7).map((l) => <PCard key={l.slot} l={l} />)}</div></div>
+          <div className="bench"><h4>Substitutes</h4><div className="prow">{sc.lineup.filter((l) => isBench(l.slot)).map((l) => <PCard key={l.slot} l={l} />)}</div></div>
         </div>
         <div className="card flush">
           <div className="card-h"><h3>Breakdown</h3></div>
@@ -671,8 +680,9 @@ export function Rules() {
             <li>Pick <b>{R.squadSize} players</b> from the male football teams: 2 goalkeepers, 2 defenders, 2 midfielders, 2 forwards.</li>
             <li>Your budget is <b>{money(R.budget)}</b>. Prices are set by the organisers and don’t change.</li>
             <li>Max <b>{R.maxPerTeam}</b> players from any one level.</li>
-            <li>6 start (1 goalkeeper + 5 outfield, matching the 6-a-side format), 2 sit on the bench.</li>
-            <li>Your starting six must include <b>at least 1 goalkeeper, 1 defender, 1 midfielder and 1 forward</b> — you can’t bench both players in a position.</li>
+            <li>Your squad has <b>2 goalkeepers, at least 2 defenders, 2 midfielders and 2 forwards, plus 1 extra outfield player</b> of any position.</li>
+            <li>7 start (1 goalkeeper + 6 outfield, matching the 7-a-side format) — a 2-2-2 by default. 2 sit on the bench: a goalkeeper and an outfield player.</li>
+            <li>Your starting seven must include <b>at least 1 goalkeeper, 1 defender, 1 midfielder and 1 forward</b> — you can’t bench both players in a position.</li>
             <li>Your <b>captain scores double</b>. If he doesn’t play, your vice-captain scores double instead.</li>
             <li>If a starter doesn’t play, your bench player in the same role (GK or outfield) comes on automatically, if he played.</li>
           </ul>

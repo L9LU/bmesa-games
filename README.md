@@ -95,12 +95,12 @@ Admins can make other people organisers on **Admin → Users**.
 | | |
 |---|---|
 | Budget | 70.0m |
-| Squad | 8: 2 GK, 2 DEF, 2 MID, 2 FWD (6 start, 2 on the bench; the starting six must include at least 1 GK, DEF, MID and FWD) |
+| Squad | 9 (7-a-side): 2 GK, at least 2 DEF, 2 MID, 2 FWD, plus 1 extra outfield player of any position. 7 start (GK + 6 outfield, a 2-2-2 by default); bench = 1 GK + 1 outfield. The starting seven must include at least 1 GK, DEF, MID and FWD |
 | Max per level | 3 |
 | Gameweeks | GW1 Fri 4 Dec · GW2 Mon 7 Dec · GW3 Tue 8 Dec · GW4 Fri 11 Dec |
 | Transfers | Unlimited before your first deadline, then 2 free per gameweek, −4 pts each after |
 | Captain | Double points; vice-captain doubles if the captain doesn't play |
-| Auto-subs | Bench GK replaces starting GK, bench outfielder replaces the first outfield starter who didn't play |
+| Auto-subs | Bench GK replaces the starting GK, the bench outfielder replaces the first outfield starter who didn't play |
 
 Points: played +2 · goal GK/DEF +6, MID +5, FWD +4 · assist +3 · clean sheet GK/DEF +4, MID +1 · every 2 conceded GK/DEF −1 · every 3 saves +1 · penalty save +5 · penalty miss −2 · own goal −2 · yellow −1 · red −3 · MVP +3.
 

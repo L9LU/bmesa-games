@@ -116,7 +116,7 @@ CREATE TABLE IF NOT EXISTS gw_picks (
   user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   gameweek_id INT NOT NULL REFERENCES gameweeks(id) ON DELETE CASCADE,
   player_id INT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
-  slot INT NOT NULL CHECK (slot BETWEEN 1 AND 8),   -- 1 = GK, 2..6 = outfield starters, 7 = bench GK, 8 = bench outfield
+  slot INT NOT NULL CHECK (slot BETWEEN 1 AND 9),   -- 1 = GK, 2..7 = outfield starters, 8 = bench GK, 9 = bench outfield
   is_captain BOOLEAN NOT NULL DEFAULT false,
   is_vice BOOLEAN NOT NULL DEFAULT false,
   PRIMARY KEY (user_id, gameweek_id, slot)

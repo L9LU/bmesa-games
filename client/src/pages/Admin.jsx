@@ -380,8 +380,8 @@ function PlayerRow({ p, teams }) {
 /** Warns organisers when no valid squad fits the budget (so managers can't build a team). */
 function BudgetCheck({ players, rules }) {
   const active = players.filter((p) => p.active);
-  const best = useMemo(() => cheapestCompletion(active, rules.composition, {}, rules.maxPerTeam), [players, rules]); // eslint-disable-line react-hooks/exhaustive-deps
-  const need = Object.entries(rules.composition).map(([pos, n]) => `${n} ${pos}`).join(', ');
+  const best = useMemo(() => cheapestCompletion(active, rules.composition, rules.extraOutfield || 0, {}, rules.maxPerTeam), [players, rules]); // eslint-disable-line react-hooks/exhaustive-deps
+  const need = Object.entries(rules.composition).map(([pos, n]) => `${n} ${pos}`).join(', ') + (rules.extraOutfield ? ` + ${rules.extraOutfield} extra outfield` : '');
   const box = (ok, children) => (
     <div className="deadline" style={{ margin: '12px 0 16px', ...(ok ? { background: '#ecfdf5', borderColor: '#a7f3d0' } : { background: '#fef2f2', borderColor: '#fecaca' }) }}>{children}</div>
   );

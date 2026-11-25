@@ -22,7 +22,7 @@ const IND = 'BME Year 5 Class';
 const PITCH = 'Staff School';
 
 const EVENTS = [
-  { slug: 'male-football', name: 'Male Football', category: 'Football', format: 'Knockout, 2 × 25-minute halves. Semi-finals are home and away.', awards: '1 Trophy, 11 Gold, 11 Silver, 11 Bronze, MVP, Golden Boot, Golden Gloves', players_info: '6-a-side (1 keeper), 3 substitutes, 1 coach', venue: PITCH },
+  { slug: 'male-football', name: 'Male Football', category: 'Football', format: 'Knockout, 2 × 25-minute halves. Semi-finals are home and away.', awards: '1 Trophy, 11 Gold, 11 Silver, 11 Bronze, MVP, Golden Boot, Golden Gloves', players_info: '7-a-side (1 keeper + 6 outfield), plus substitutes and 1 coach', venue: PITCH },
   { slug: 'female-football', name: 'Female Football', category: 'Football', format: 'Final, 2 × 10-minute halves', awards: '1 Trophy, 10 Gold, 10 Silver, MVP', players_info: '6-a-side (1 keeper), 2 substitutes, 1 coach', venue: PITCH },
   { slug: 'male-basketball', name: 'Male Basketball', category: 'Basketball', format: 'Final', awards: '8 Gold, 8 Silver, MVP', players_info: '8 per team: 5 starters, 3 subs' },
   { slug: 'female-basketball', name: 'Female Basketball', category: 'Basketball', format: 'Final', awards: '4 Gold, 4 Silver, MVP', players_info: 'TBC' },
@@ -143,19 +143,22 @@ function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.fl
 function randomSquad(players) {
   for (let attempt = 0; attempt < 500; attempt++) {
     const need = { ...RULES.composition };
+    let extra = RULES.extraOutfield;
     const perTeam = {};
     const chosen = [];
     for (const p of shuffle([...players])) {
-      if (need[p.position] > 0 && (perTeam[p.team_id] || 0) < RULES.maxPerTeam) {
-        chosen.push(p); need[p.position]--; perTeam[p.team_id] = (perTeam[p.team_id] || 0) + 1;
-      }
+      if ((perTeam[p.team_id] || 0) >= RULES.maxPerTeam) continue;
+      if (need[p.position] > 0) need[p.position]--;
+      else if (p.position !== 'GK' && extra > 0) extra--;
+      else continue;
+      chosen.push(p); perTeam[p.team_id] = (perTeam[p.team_id] || 0) + 1;
     }
     if (chosen.length !== RULES.squadSize) continue;
     const gks = chosen.filter((p) => p.position === 'GK');
     const out = shuffle(chosen.filter((p) => p.position !== 'GK'));
     const picks = [
-      { player_id: gks[0].id, slot: 1 }, ...out.slice(0, 5).map((p, i) => ({ player_id: p.id, slot: i + 2 })),
-      { player_id: gks[1].id, slot: 7 }, { player_id: out[5].id, slot: 8 },
+      { player_id: gks[0].id, slot: 1 }, ...out.slice(0, 6).map((p, i) => ({ player_id: p.id, slot: i + 2 })),
+      { player_id: gks[1].id, slot: RULES.benchGkSlot }, { player_id: out[6].id, slot: RULES.benchOutfieldSlot },
     ].map((p) => ({ ...p, is_captain: p.slot === 2, is_vice: p.slot === 3 }));
     const map = new Map(players.map((p) => [p.id, p]));
     if (validateSquad(picks, map).ok) return picks;
