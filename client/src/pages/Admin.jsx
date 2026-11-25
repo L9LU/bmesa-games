@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useApp, useData } from '../app-context.jsx';
 import { Loading, Modal, Shirt, TeamLogo } from '../components.jsx';
-import { api, dayKey, fmtDay, fmtShort, fromLocalInput, teamSide, toLocalInput } from '../lib.js';
+import { api, cheapestCompletion, dayKey, fmtDay, fmtShort, fromLocalInput, money, teamSide, toLocalInput } from '../lib.js';
 
 const STATUS = ['scheduled', 'live', 'finished'];
 
@@ -285,6 +285,27 @@ function PlayerRow({ p, teams }) {
   );
 }
 
+/** Warns organisers when no valid squad fits the budget (so managers can't build a team). */
+function BudgetCheck({ players, rules }) {
+  const active = players.filter((p) => p.active);
+  const best = useMemo(() => cheapestCompletion(active, rules.composition, {}, rules.maxPerTeam), [players, rules]); // eslint-disable-line react-hooks/exhaustive-deps
+  const need = Object.entries(rules.composition).map(([pos, n]) => `${n} ${pos}`).join(', ');
+  const box = (ok, children) => (
+    <div className="deadline" style={{ margin: '12px 0 16px', ...(ok ? { background: '#ecfdf5', borderColor: '#a7f3d0' } : { background: '#fef2f2', borderColor: '#fecaca' }) }}>{children}</div>
+  );
+  if (!best) {
+    return box(false, <span>⚠ <b>Managers can’t build a squad yet.</b> A squad needs {need}, with at most {rules.maxPerTeam} players from one class — there aren’t enough available players for that. Keep adding squads.</span>);
+  }
+  if (best.cost > rules.budget) {
+    return box(false, (
+      <span>⚠ <b>Cheapest valid squad: {money(best.cost)} — over the {money(rules.budget)} budget.</b> Nobody can afford a team. Add cheaper players (full squads, not just the stars) or lower some prices.
+        <span className="small muted" style={{ display: 'block', marginTop: 4 }}>Cheapest squad: {best.players.map((p) => `${p.name} (${p.team_short} ${p.position} ${money(p.price)})`).join(', ')}</span>
+      </span>
+    ));
+  }
+  return box(true, <span>✓ Cheapest valid squad: <b>{money(best.cost)}</b> of the {money(rules.budget)} budget — managers can build a team.</span>);
+}
+
 export function Players() {
   const run = useAction();
   const { data: b, error, reload } = useData('/api/fantasy/bootstrap');
@@ -306,6 +327,7 @@ export function Players() {
     <>
       <h1>Fantasy players</h1>
       <p className="muted">Add the men’s football squads. Price is in millions (e.g. 6.5). Untick “Available” to stop new managers picking a player.</p>
+      <BudgetCheck players={b.players} rules={b.rules} />
       <div className="grid g2">
         <section className="card">
           <h3>Add one player</h3>

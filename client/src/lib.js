@@ -44,6 +44,37 @@ export function shortName(name) {
   return p.length > 1 && last.length >= 3 && !/^\d+$/.test(last) ? last : name;
 }
 
+/**
+ * Cheapest way to fill the remaining squad places.
+ * pool: available players not already picked; need: { GK, DEF, MID, FWD } places still to fill;
+ * teamCount: { team_id: players already picked from that team }.
+ * Returns { cost, players } or null if the places can't be filled at all.
+ * Branch-and-bound over players sorted by price, so it's fast for a few hundred players.
+ */
+export function cheapestCompletion(pool, need, teamCount, maxPerTeam) {
+  const list = [...pool].sort((a, b) => a.price - b.price);
+  const cnt = { ...need };
+  const team = { ...teamCount };
+  const chosen = [];
+  let best = Infinity, bestSet = null, steps = 0;
+  (function rec(i, cost, left) {
+    if (++steps > 300000) return; // safety cap; result so far is still a valid squad
+    if (left === 0) { if (cost < best) { best = cost; bestSet = [...chosen]; } return; }
+    if (i + left > list.length) return;
+    let bound = cost; // cheapest possible finish: the next `left` prices
+    for (let j = i; j < i + left; j++) bound += list[j].price;
+    if (bound >= best) return;
+    const p = list[i];
+    if (cnt[p.position] > 0 && (team[p.team_id] || 0) < maxPerTeam) {
+      cnt[p.position]--; team[p.team_id] = (team[p.team_id] || 0) + 1; chosen.push(p);
+      rec(i + 1, cost + p.price, left - 1);
+      cnt[p.position]++; team[p.team_id]--; chosen.pop();
+    }
+    rec(i + 1, cost, left);
+  })(0, 0, Object.values(cnt).reduce((s, n) => s + Math.max(0, n), 0));
+  return bestSet ? { cost: best, players: bestSet } : null;
+}
+
 /** Resolve a fixture side to a team-like object (real team or placeholder label). */
 export function teamSide(f, side, teams) {
   const id = f[`${side}_team_id`];

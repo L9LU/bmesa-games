@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useApp, useData } from '../app-context.jsx';
 import { Loading, Modal, Shirt, StatusPill, TeamLogo, TeamName } from '../components.jsx';
-import { api, countdown, fmtShort, fmtTime, money, POS, POS_NAME, shortName, teamSide } from '../lib.js';
+import { api, cheapestCompletion, countdown, fmtShort, fmtTime, money, POS, POS_NAME, shortName, teamSide } from '../lib.js';
 
 const nextGw = (b) => b.gameweeks.find((g) => g.state === 'next');
 const useBoot = () => useData('/api/fantasy/bootstrap');
@@ -180,18 +180,41 @@ function Picker({ b, reload, toast }) {
         if (!opts.length) { ok = false; break; }
         squad[s] = opts[Math.floor(Math.random() * opts.length)].id;
       }
-      if (!ok) continue;
-      const starters = OUT_SLOTS.map((s) => squad[s]);
-      const byPrice = [...starters].sort((x, y) => byId.get(y).price - byId.get(x).price);
-      setS((prev) => {
-        const cap = prev.cap && starters.includes(prev.cap) ? prev.cap : byPrice[0];
-        const vice = prev.vice && prev.vice !== cap && starters.includes(prev.vice) ? prev.vice : byPrice.find((x) => x !== cap);
-        return { squad, cap, vice };
-      });
-      setSel(null);
-      return;
+      if (ok) return applyAutoSquad(squad);
     }
-    toast('Could not fit a squad in your budget. Try removing an expensive player.', true);
+
+    // Random picks failed: fill the empty places as cheaply as possible, if that fits the budget
+    const picked = Object.values(S.squad).filter(Boolean).map((id) => byId.get(id));
+    const need = { ...R.composition };
+    const teamCount = {};
+    for (const p of picked) { need[p.position]--; teamCount[p.team_id] = (teamCount[p.team_id] || 0) + 1; }
+    const spent = picked.reduce((s, p) => s + p.price, 0);
+    const fill = cheapestCompletion(active.filter((p) => !picked.includes(p)), need, teamCount, R.maxPerTeam);
+    if (fill && spent + fill.cost <= R.budget) {
+      const squad = { ...S.squad };
+      const gkSlots = free.filter(isGkSlot), outSlots = free.filter((s) => !isGkSlot(s));
+      for (const p of fill.players) squad[p.position === 'GK' ? gkSlots.shift() : outSlots.shift()] = p.id;
+      return applyAutoSquad(squad);
+    }
+
+    // No affordable completion: explain whether it's the player list or the user's own picks
+    const fromScratch = cheapestCompletion(active, R.composition, {}, R.maxPerTeam);
+    if (!fromScratch || fromScratch.cost > R.budget) {
+      toast(`There aren't enough affordable players yet to build a squad under ${money(R.budget)}. Organisers are still adding players — check back soon.`, true);
+    } else {
+      toast(`Your current picks leave too little budget to fill the squad. Remove an expensive player, then try Auto-pick again.`, true);
+    }
+  }
+
+  function applyAutoSquad(squad) {
+    const starters = OUT_SLOTS.map((s) => squad[s]);
+    const byPrice = [...starters].sort((x, y) => byId.get(y).price - byId.get(x).price);
+    setS((prev) => {
+      const cap = prev.cap && starters.includes(prev.cap) ? prev.cap : byPrice[0];
+      const vice = prev.vice && prev.vice !== cap && starters.includes(prev.vice) ? prev.vice : byPrice.find((x) => x !== cap);
+      return { squad, cap, vice };
+    });
+    setSel(null);
   }
 
   async function save() {
