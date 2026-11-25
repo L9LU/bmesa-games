@@ -3,6 +3,26 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useApp, useData } from '../app-context.jsx';
 import { Loading, Modal, Shirt, StatusPill, TeamLogo, TeamName } from '../components.jsx';
 import { api, cheapestCompletion, squadNeeds, countdown, fmtShort, fmtTime, money, POS, POS_NAME, shortName, teamSide } from '../lib.js';
+import AnimatedContent from '../vendor/react-bits/AnimatedContent.jsx';
+import BorderGlow from '../vendor/react-bits/BorderGlow.jsx';
+import ClickSpark from '../vendor/react-bits/ClickSpark.jsx';
+import Counter from '../vendor/react-bits/Counter.jsx';
+import GradientText from '../vendor/react-bits/GradientText.jsx';
+import Magnet from '../vendor/react-bits/Magnet.jsx';
+import SplitText from '../vendor/react-bits/SplitText.jsx';
+import StarBorder from '../vendor/react-bits/StarBorder.jsx';
+import TextType from '../vendor/react-bits/TextType.jsx';
+
+// House settings for the React Bits pieces used across the fantasy pages
+const BRAND_GRADIENT = ['#141f6b', '#1f33b0', '#b3262c', '#1f33b0', '#141f6b'];
+const Reveal = ({ children, ...props }) => (
+  <AnimatedContent distance={32} duration={0.7} ease="power3.out" threshold={0.1} {...props}>{children}</AnimatedContent>
+);
+const TeamTitle = ({ children }) => (
+  <h1 style={{ margin: 0 }}><GradientText colors={BRAND_GRADIENT} animationSpeed={7}>{children}</GradientText></h1>
+);
+/** Rolling-digit number for the stat boxes (React Bits Counter). */
+const Num = ({ value, ...props }) => <Counter value={value} fontSize={24} duration={0.6} bounce={0.15} {...props} />;
 
 const nextGw = (b) => b.gameweeks.find((g) => g.state === 'next');
 const useBoot = () => useData('/api/fantasy/bootstrap');
@@ -291,12 +311,12 @@ function Picker({ b, reload, toast }) {
   return (
     <>
       <div className="fant-head">
-        <div><div className="cat">Fantasy football · Male football</div><h1 style={{ margin: 0 }}>{b.me.team_name || 'Pick your squad'}</h1></div>
+        <div><div className="cat">Fantasy football · Male football</div><TeamTitle>{b.me.team_name || 'Pick your squad'}</TeamTitle></div>
         <div className="stat-strip">
-          <div className="stat"><b className="num">{ids.length}/{R.squadSize}</b><span>Players</span></div>
-          <div className={`stat ${bank < 0 ? 'warn' : ''}`}><b className="num">{money(bank)}</b><span>In the bank</span></div>
-          <div className="stat"><b className="num">{first ? '∞' : `${transfers}/${R.freeTransfers}`}</b><span>{first ? 'Free transfers' : 'Transfers'}</span></div>
-          <div className={`stat ${hit ? 'warn' : ''}`}><b className="num">{hit ? `-${hit}` : 0}</b><span>Points cost</span></div>
+          <div className="stat"><b className="num"><Num value={ids.length} suffix={`/${R.squadSize}`} /></b><span>Players</span></div>
+          <div className={`stat ${bank < 0 ? 'warn' : ''}`}><b className="num"><Num value={bank / 10} decimals={1} suffix="m" /></b><span>In the bank</span></div>
+          <div className="stat"><b className="num">{first ? '∞' : <Num value={transfers} suffix={`/${R.freeTransfers}`} />}</b><span>{first ? 'Free transfers' : 'Transfers'}</span></div>
+          <div className={`stat ${hit ? 'warn' : ''}`}><b className="num"><Num value={hit ? -hit : 0} /></b><span>Points cost</span></div>
         </div>
       </div>
       {gw ? (
@@ -307,7 +327,7 @@ function Picker({ b, reload, toast }) {
       ) : <div className="deadline" style={{ marginBottom: 14 }}>All deadlines have passed. Your team is locked — see <Link to="/fantasy/points">Points</Link>.</div>}
 
       <div className="pick-layout">
-        <div>
+        <ClickSpark sparkColor="#f6d10f" sparkSize={10} sparkRadius={22} sparkCount={9} duration={450} glow={0.4}>
           {swap && <div className="deadline" style={{ marginBottom: 10, background: '#eef2ff', borderColor: '#c7d2fe' }}>Pick the player to swap with. <button className="btn sm" onClick={() => setSwap(null)}>Cancel</button></div>}
           <div className="pitch">
             <div className="prow"><Card slot={1} /></div>
@@ -320,12 +340,15 @@ function Picker({ b, reload, toast }) {
               <div className="row">
                 <button className="btn sm ghost" onClick={autoPick}>Auto-pick</button>
                 <button className="btn sm ghost" onClick={() => { setS(savedState(b.me)); setSel(null); setSwap(null); }}>Reset</button>
-                <button className="btn gold" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save team'}</button>
+                <StarBorder as="button" className="save-star" onClick={save} disabled={saving} theme="dark"
+                  backgroundColor="#f6d10f" textColor="#141f6b" color="#ffffff" radius={8} thickness={1.5} stars={2} sparkle>
+                  {saving ? 'Saving…' : 'Save team'}
+                </StarBorder>
               </div>
             </div>
           )}
           <p className="small muted">Squad of {R.squadSize}: 2 goalkeepers, at least 2 defenders, 2 midfielders and 2 forwards, plus 1 extra outfield player of any position. 7 start (keeper + 6 outfield), 2 on the bench. Max {R.maxPerTeam} from one level. Budget {money(R.budget)}. Tap a player to captain, substitute or transfer them.</p>
-        </div>
+        </ClickSpark>
 
         <div className="card flush">
           <div className="card-h"><h3>{sel ? (labels[sel] === 'ANY' ? 'Choose any outfield player' : `Choose a ${POS_NAME[labels[sel]].toLowerCase()}`) : 'Players'}</h3>{sel && <button className="btn sm" onClick={() => setSel(null)}>Show all</button>}</div>
@@ -388,10 +411,18 @@ function Landing({ b }) {
     <>
       <section className="hero">
         <div style={{ position: 'relative', zIndex: 1 }}>
-          <div className="hero-title"><img className="hero-logo" src="/bmesa-logo.png" alt="" /><div><div className="cat" style={{ color: 'var(--gold)' }}>BMESA Fantasy</div><h1>Pick your 8. Back your level.</h1></div></div>
+          <div className="hero-title"><img className="hero-logo" src="/bmesa-logo.png" alt="" /><div>
+            <div className="cat" style={{ color: 'var(--gold)' }}>BMESA Fantasy</div>
+            <SplitText tag="h1" className="fantasy-h1" text={`Pick your ${b.rules.squadSize}.`} splitType="chars" effect="rise" trigger="load" delay={45} duration={0.8} textAlign="left" />
+            <TextType as="div" className="fantasy-type" text={['Back your level.', 'Captain your star.', 'Beat your classmates.', 'Win the crown.']}
+              typingSpeed={55} deletingSpeed={30} pauseDuration={1700} initialDelay={700} cursorCharacter="▍" cursorColor="#f6d10f" />
+          </div></div>
           <p style={{ marginTop: 12 }}>Build a squad from the male football teams, captain your star player and score points for goals, assists, clean sheets and MVP awards across {b.gameweeks.length} gameweeks.</p>
           {gw && <p><b style={{ color: '#fff' }}>{gw.name} deadline:</b> {fmtShort(gw.deadline)}</p>}
-          <div className="row"><Link className="btn gold" to="/signup">Create account</Link><Link className="btn ghost" to="/login">Log in</Link></div>
+          <div className="row">
+            <Magnet padding={60} magnetStrength={3}><Link className="btn gold" to="/signup">Create account</Link></Magnet>
+            <Link className="btn ghost" to="/login">Log in</Link>
+          </div>
         </div>
         <div className="hero-side">
           <h3>How it works</h3>
@@ -402,7 +433,7 @@ function Landing({ b }) {
           <p style={{ marginTop: 12 }}><Link to="/fantasy/rules" style={{ color: 'var(--gold)' }}>Full rules & scoring →</Link></p>
         </div>
       </section>
-      {top.length > 0 && <section className="card flush"><div className="card-h"><h2>Top managers</h2><Link className="small" to="/fantasy/leagues">Full table</Link></div><StandingsTable rows={top} /></section>}
+      {top.length > 0 && <Reveal><section className="card flush"><div className="card-h"><h2>Top managers</h2><Link className="small" to="/fantasy/leagues">Full table</Link></div><StandingsTable rows={top} /></section></Reveal>}
     </>
   );
 }
@@ -448,7 +479,7 @@ export function Points() {
     const out = sc.lineup.filter((l) => l.slot > 1 && isStarter(l.slot));
     const rows = ['DEF', 'MID', 'FWD'].map((pos) => out.filter((l) => byId.get(l.player_id).position === pos)).filter((r) => r.length);
     body = (
-      <div className="pick-layout">
+      <Reveal className="pick-layout" stagger={0.12} key={data.gw.id}>
         <div>
           <div className="pitch">
             <div className="prow"><PCard l={sc.lineup.find((l) => l.slot === 1)} /></div>
@@ -475,20 +506,20 @@ export function Points() {
             </tbody>
           </table>
         </div>
-      </div>
+      </Reveal>
     );
   }
   return (
     <>
       <div className="fant-head">
-        <div><div className="cat">{data.manager.name} · {data.manager.level}</div><h1 style={{ margin: 0 }}>{data.manager.team_name}</h1></div>
+        <div><div className="cat">{data.manager.name} · {data.manager.level}</div><TeamTitle>{data.manager.team_name}</TeamTitle></div>
         <div className="row">
           <div className="gw-nav">
             {idx > 0 && <Link className="btn sm" to={`${base}?gw=${gws[idx - 1].id}`}>‹</Link>}
             <b>{data.gw.name}</b>
             {idx < gws.length - 1 && <Link className="btn sm" to={`${base}?gw=${gws[idx + 1].id}`}>›</Link>}
           </div>
-          <div className="big-points"><b className="num">{sc ? sc.total : 0}</b><span className="small">points</span></div>
+          <div className="big-points"><b className="num"><Counter key={data.gw.id} value={sc ? sc.total : 0} fontSize={52} duration={1.1} bounce={0.25} stagger={0.08} /></b><span className="small">points</span></div>
         </div>
       </div>
       {body}
@@ -545,7 +576,7 @@ export function Leagues() {
         {user?.level && chip(`level:${user.level}`, user.level)}
         {(mine?.leagues || []).map((l) => chip(String(l.id), `${l.name} · ${l.members}`))}
       </div>
-      <div className="pick-layout">
+      <Reveal className="pick-layout" stagger={0.12}>
         <section className="card flush">
           {!table ? <Loading error={error} /> : <>
             <div className="card-h"><h2>{table.title}</h2>{table.code && <span className="small">Invite code: <b className="pill">{table.code}</b></span>}</div>
@@ -553,7 +584,9 @@ export function Leagues() {
           </>}
         </section>
         {user ? (
-          <section className="card">
+          <BorderGlow className="leagues-glow" backgroundColor="#ffffff" borderRadius={12} glowRadius={28} glowColor="51 93 55"
+            colors={['#f6d10f', '#1f33b0', '#b3262c']} edgeSensitivity={25} fillOpacity={0.25}>
+          <section className="leagues-card">
             <h3>Private leagues</h3>
             <p className="small muted">Make a league for your class, hostel or friends, then share the code.</p>
             <form className="row" style={{ marginBottom: 14 }} onSubmit={(e) => go(e, '/api/fantasy/leagues', { name: newName })}>
@@ -566,8 +599,9 @@ export function Leagues() {
             </form>
             <p className="small muted" style={{ marginTop: 14 }}>You’re automatically in the Overall league and your level’s league.</p>
           </section>
+          </BorderGlow>
         ) : <section className="card"><p><Link to="/login">Log in</Link> to create or join private leagues.</p></section>}
-      </div>
+      </Reveal>
     </>
   );
 }
@@ -588,7 +622,7 @@ export function Stats() {
   return (
     <>
       <h1>Player stats</h1>
-      <div className="card flush">
+      <Reveal className="card flush">
         <div className="filters">
           <select value={f.pos} onChange={set('pos')}><option value="ALL">All positions</option>{POS.map((x) => <option key={x} value={x}>{POS_NAME[x]}s</option>)}</select>
           <select value={f.team} onChange={set('team')}><option value="ALL">All teams</option>{teamsFromPlayers(b).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
@@ -610,7 +644,7 @@ export function Stats() {
             </tbody>
           </table>
         </div>
-      </div>
+      </Reveal>
       {info && <PlayerModal b={b} p={info} onClose={() => setInfo(null)} />}
     </>
   );
@@ -629,7 +663,7 @@ export function Fixtures() {
       {b.gameweeks.map((g) => {
         const fx = b.fixtures.filter((f) => f.gameweek_id === g.id);
         return (
-          <section className="day" key={g.id}>
+          <Reveal className="day" key={g.id} distance={24}>
             <div className="day-h">
               <h2>{g.name}</h2><span className="muted">Deadline {fmtShort(g.deadline)}</span>
               {g.state === 'next' && <span className="pill" style={{ background: 'var(--gold)' }}>Next deadline</span>}
@@ -650,7 +684,7 @@ export function Fixtures() {
                 );
               })}
             </div>
-          </section>
+          </Reveal>
         );
       })}
     </>
@@ -673,7 +707,7 @@ export function Rules() {
   return (
     <>
       <h1>Rules & scoring</h1>
-      <div className="grid g2">
+      <Reveal className="grid g2" stagger={0.12}>
         <section className="card">
           <h2>Your squad</h2>
           <ul>
@@ -698,7 +732,7 @@ export function Rules() {
           <div className="card-h"><h2>Points</h2></div>
           <table className="t"><tbody>{rows.map(([l, v]) => <tr key={l}><td>{l}</td><td className="r num"><b>{v}</b></td></tr>)}</tbody></table>
         </section>
-      </div>
+      </Reveal>
     </>
   );
 }

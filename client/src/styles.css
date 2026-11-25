@@ -163,7 +163,7 @@ table.t { width: 100%; border-collapse: collapse; font-size: 14px; }
 .stat-strip { display: flex; gap: 10px; flex-wrap: wrap; }
 .stat { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 8px 14px; min-width: 96px; }
 .stat b { display: block; font-family: var(--head); font-size: 24px; line-height: 1.1; }
-.stat span { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; }
+.stat > span { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; }
 .stat.warn b { color: var(--danger); }
 .pick-layout { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 18px; align-items: start; }
 .pitch { position: relative; border-radius: 14px; padding: 22px 10px 16px; overflow: hidden;
@@ -324,3 +324,15 @@ table.t { width: 100%; border-collapse: collapse; font-size: 14px; }
 .spotlight .cat .shiny-text { font-weight: 800; }
 @media (max-width: 860px) { .landing-h1 { font-size: 34px; } }
 @media (prefers-reduced-motion: reduce) { .spotlight-card.crown-card, .event-card { transition: none; } }
+
+/* ---------- fantasy motion (React Bits) ---------- */
+.fantasy-h1 { font-size: 42px; margin: 0; line-height: 1.05; }
+.fantasy-type { font-family: var(--head); font-size: 30px; font-weight: 800; color: var(--gold); min-height: 1.2em; line-height: 1.2; }
+.star-border.save-star { padding: 8px 18px; font: 700 14px var(--body); cursor: pointer; }
+.star-border.save-star:disabled { opacity: .6; cursor: progress; }
+.stat b .counter, .big-points b .counter { line-height: 1.1; }
+.border-glow-card.leagues-glow { width: 100%; }
+.leagues-glow .leagues-card { padding: 18px; }
+@media (max-width: 860px) { .fantasy-h1 { font-size: 34px; } .fantasy-type { font-size: 24px; } }
+/* Glow effects (BorderGlow, SpotlightCard) may paint past the content edge; clip sideways without breaking sticky bars */
+main.wrap { overflow-x: clip; }
