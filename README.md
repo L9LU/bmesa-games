@@ -92,7 +92,11 @@ To change any of these, edit `src/rules.js` — the rules page updates itself.
 ## Files
 
 ```
-src/server.js     API routes, login, organiser endpoints
+src/app.js        API routes, login, organiser endpoints (Express app)
+src/server.js     long-running server for local use and Render (API + React build)
+api/index.js      Vercel serverless function (wraps src/app.js)
+vercel.json       Vercel build, region and routing settings
+render.yaml       Render Blueprint settings
 src/rules.js      fantasy rules and scoring (pure functions, tested)
 src/fantasy.js    gameweeks, squads, transfers, standings
 src/seed.js       the games programme: events, fixtures, gameweeks
