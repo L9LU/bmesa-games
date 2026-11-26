@@ -94,7 +94,7 @@ Admins can make other people organisers on **Admin → Users**.
 
 | | |
 |---|---|
-| Budget | 70.0m |
+| Budget | 80.0m |
 | Squad | 9 (7-a-side): 2 GK, at least 2 DEF, 2 MID, 2 FWD, plus 1 extra outfield player of any position. 7 start (GK + 6 outfield, a 2-2-2 by default); bench = 1 GK + 1 outfield. The starting seven must include at least 1 GK, DEF, MID and FWD |
 | Max per level | 3 |
 | Gameweeks | GW1 Fri 4 Dec · GW2 Mon 7 Dec · GW3 Tue 8 Dec · GW4 Fri 11 Dec |
