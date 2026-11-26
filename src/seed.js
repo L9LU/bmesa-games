@@ -11,7 +11,7 @@ const TEAMS = [
   // Colours are taken from each class logo
   { name: 'Year 1', short: 'Y1', color: '#7c3aed', logo_url: '/kits/y1-logo.webp' }, // Bioneers crest (purple)
   { name: 'Year 2', short: 'Y2', color: '#1f2d5c', logo_url: '/kits/y2-logo.webp', jersey_url: '/kits/y2-jersey.png', gk_jersey_url: '/kits/y2-gk.png' }, // DNA & gear; navy kit, red GK
-  { name: 'Year 3', short: 'Y3', color: '#7a1f2b', logo_url: '/kits/y3-logo.webp' }, // Biomedical FC heart (maroon)
+  { name: 'Year 3', short: 'Y3', color: '#7a1f2b', logo_url: '/kits/y3-logo.webp', jersey_url: '/kits/y3-jersey.png' }, // Biomedical FC heart; purple/black kit
   { name: 'Year 4', short: 'Y4', color: '#64748b', logo_url: '/kits/y4-logo.webp', jersey_url: '/kits/y4-jersey.png', gk_jersey_url: '/kits/y4-gk.png' }, // Owl shield; teal/black kit, orange GK
   { name: 'Year 5', short: 'Y5', color: '#c9a046', logo_url: '/kits/y5-logo.png', jersey_url: '/kits/y5-jersey.png', gk_jersey_url: '/kits/y5-gk.png' }, // Wolf; black kit, gold GK
   { name: 'Angels', short: 'ANG', color: '#ec4899', is_level: false },
