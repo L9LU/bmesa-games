@@ -66,9 +66,12 @@ async function picksAt(userId, maxSort) {
 async function allPlayers() {
   const { rows } = await db.query(
     `SELECT p.id, p.name, p.position, p.price, p.active, p.team_id, t.name AS team, t.short AS team_short, t.color AS team_color,
-            t.logo_url AS team_logo, t.jersey_url AS team_jersey, t.gk_jersey_url AS team_gk_jersey
+            t.logo_url AS team_logo, t.jersey_url AS team_jersey, t.gk_jersey_url AS team_gk_jersey, p.photo_updated
        FROM players p JOIN teams t ON t.id = p.team_id ORDER BY p.position, p.price DESC, p.name`);
-  return rows;
+  // Photo bytes are served separately; the ?v= stamp busts caches when a photo is replaced
+  return rows.map(({ photo_updated, ...p }) => ({
+    ...p, photo_url: photo_updated ? `/api/players/${p.id}/photo?v=${new Date(photo_updated).getTime()}` : null,
+  }));
 }
 
 /** Total points and selection % for each player. */

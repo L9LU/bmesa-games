@@ -42,7 +42,17 @@ app.use((req, res, next) => {
 // JSON bodies: small everywhere, except spotlight uploads which carry a (resized) photo
 const jsonSmall = express.json({ limit: '200kb' });
 const jsonPhoto = express.json({ limit: '3mb' });
-app.use((req, res, next) => (req.method === 'POST' && req.path === '/api/admin/spotlights' ? jsonPhoto : jsonSmall)(req, res, next));
+const PHOTO_ROUTES = /^\/api\/admin\/(spotlights|players\/\d+\/photo)$/;
+app.use((req, res, next) => (req.method === 'POST' && PHOTO_ROUTES.test(req.path) ? jsonPhoto : jsonSmall)(req, res, next));
+
+/** Decode a browser-resized image data URL; returns { image, type } or { error }. */
+function decodePhoto(dataUrl, maxBytes = 1.5 * 1024 * 1024) {
+  const m = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl || ''));
+  if (!m) return { error: 'Photo must be a JPEG, PNG or WebP image.' };
+  const image = Buffer.from(m[2], 'base64');
+  if (image.length > maxBytes) return { error: 'Photo is too large (max 1.5 MB after resizing).' };
+  return { image, type: m[1] };
+}
 app.use(cookieParser());
 
 // ---------- helpers ----------
@@ -197,18 +207,79 @@ app.get('/api/fantasy/points/:userId', wrap(async (req, res) => {
   res.json({ manager: u[0], gameweeks: gws, gw, score });
 }));
 
+// Player photo (cache forever; the URL carries a version stamp)
+app.get('/api/players/:id/photo', wrap(async (req, res) => {
+  const { rows } = await db.query('SELECT photo, photo_type FROM players WHERE id = $1', [+req.params.id]);
+  if (!rows[0]?.photo) return res.status(404).end();
+  res.set('Cache-Control', 'public, max-age=31536000, immutable');
+  res.type(rows[0].photo_type || 'image/jpeg').send(Buffer.from(rows[0].photo));
+}));
+
+/**
+ * Player profile: info, position ranks (points per match, form, selected), season stats,
+ * per-match points (`matches`, same shape the quick-view pop-up uses), results and upcoming fixtures.
+ */
 app.get('/api/fantasy/player/:id', wrap(async (req, res) => {
-  const { rows } = await db.query(
-    `SELECT s.*, f.round, f.starts_at, f.home_team_id, f.away_team_id, f.home_score, f.away_score, f.home_label, f.away_label, f.gameweek_id,
-            p.position, p.team_id
-       FROM player_stats s JOIN fixtures f ON f.id = s.fixture_id JOIN players p ON p.id = s.player_id
-      WHERE s.player_id = $1 ORDER BY f.starts_at`, [+req.params.id]);
+  const id = +req.params.id;
   const { playerPoints } = require('./rules');
-  for (const r of rows) {
-    const conceded = r.home_team_id === r.team_id ? r.away_score : r.home_score;
-    Object.assign(r, playerPoints(r, r.position, conceded));
+  const [players, totals, statsQ, fxQ] = await Promise.all([
+    F.allPlayers(), F.playerTotals(),
+    db.query(`SELECT s.*, f.round, f.starts_at, f.home_team_id, f.away_team_id, f.home_score, f.away_score,
+                     f.home_label, f.away_label, f.gameweek_id, f.status
+                FROM player_stats s JOIN fixtures f ON f.id = s.fixture_id ORDER BY f.starts_at, f.id`),
+    db.query('SELECT * FROM fixtures WHERE gameweek_id IS NOT NULL ORDER BY starts_at, id'),
+  ]);
+  const p = players.find((x) => x.id === id);
+  if (!p) return bad(res, 'Player not found.', 404);
+  const byId = new Map(players.map((x) => [x.id, x]));
+
+  // Points for every stat row, and per-player aggregates for the position rankings
+  const agg = new Map();
+  for (const r of statsQ.rows) {
+    const pl = byId.get(r.player_id);
+    if (!pl) continue;
+    const conceded = r.home_team_id === pl.team_id ? r.away_score : r.home_score;
+    Object.assign(r, playerPoints(r, pl.position, conceded), { conceded: conceded ?? 0, team_id: pl.team_id, position: pl.position });
+    const a = agg.get(r.player_id) || { pts: 0, played: 0, recent: [] };
+    a.pts += r.total; if (r.played) a.played++; a.recent.push(r.total);
+    agg.set(r.player_id, a);
   }
-  res.json({ matches: rows });
+  const metrics = (x) => {
+    const a = agg.get(x.id) || { pts: 0, played: 0, recent: [] };
+    const last = a.recent.slice(-3);
+    return { ppm: a.played ? a.pts / a.played : 0, form: last.length ? last.reduce((s, v) => s + v, 0) / last.length : 0, sel: totals.selected.get(x.id) || 0 };
+  };
+  const samePos = players.filter((x) => x.position === p.position);
+  const rankOf = (key) => 1 + samePos.filter((x) => metrics(x)[key] > metrics(p)[key]).length;
+  const m = metrics(p);
+  const mine = statsQ.rows.filter((r) => r.player_id === id);
+  const sum = (k) => mine.reduce((s, r) => s + (r[k] || 0), 0);
+  const played = mine.filter((r) => r.played);
+
+  const teamFx = fxQ.rows.filter((f) => f.home_team_id === p.team_id || f.away_team_id === p.team_id);
+  const side = (f) => {
+    const home = f.home_team_id === p.team_id;
+    return { home, opp_id: home ? f.away_team_id : f.home_team_id, opp_label: home ? f.away_label : f.home_label };
+  };
+  res.json({
+    player: { ...p, total_points: totals.totals.get(id) || 0, selected_by: m.sel },
+    ppm: Math.round(m.ppm * 10) / 10,
+    form: Math.round(m.form * 10) / 10,
+    ranks: { ppm: rankOf('ppm'), form: rankOf('form'), selected: rankOf('sel'), of: samePos.length },
+    stats: {
+      total_points: totals.totals.get(id) || 0, starts: played.length, goals: sum('goals'), assists: sum('assists'),
+      clean_sheets: played.filter((r) => r.conceded === 0).length, goals_conceded: played.reduce((s, r) => s + r.conceded, 0),
+      saves: sum('saves'), pen_saved: sum('pen_saved'), pen_missed: sum('pen_missed'), own_goals: sum('own_goals'),
+      yellow: sum('yellow'), red: sum('red'), mvp: mine.filter((r) => r.mvp).length,
+    },
+    matches: mine,
+    results: teamFx.filter((f) => f.status === 'finished').map((f) => {
+      const s = mine.find((r) => r.fixture_id === f.id);
+      return { ...side(f), id: f.id, round: f.round, starts_at: f.starts_at, gameweek_id: f.gameweek_id,
+        home_score: f.home_score, away_score: f.away_score, points: s ? s.total : 0, played: !!s?.played };
+    }).reverse(),
+    fixtures: teamFx.filter((f) => f.status !== 'finished').map((f) => ({ ...side(f), id: f.id, round: f.round, starts_at: f.starts_at, gameweek_id: f.gameweek_id })),
+  });
 }));
 
 app.get('/api/fantasy/standings', wrap(async (req, res) => {
@@ -276,6 +347,54 @@ app.post('/api/fantasy/leagues/join', needUser, wrap(async (req, res) => {
   if (!rows.length) return bad(res, 'No league with that code.');
   await db.query('INSERT INTO league_members (league_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [rows[0].id, req.user.id]);
   res.json({ league: rows[0] });
+}));
+
+// Manager panel (FPL-style sidebar): points & rankings, my leagues with my rank, transfers, finance
+app.get('/api/fantasy/summary', needUser, wrap(async (req, res) => {
+  const uid = req.user.id;
+  const [teamQ, overall, memberQ, trQ, gws] = await Promise.all([
+    db.query('SELECT name FROM fantasy_teams WHERE user_id = $1', [uid]),
+    F.standings(),
+    db.query(`SELECT l.id, l.name, m2.user_id FROM league_members m
+                JOIN leagues l ON l.id = m.league_id JOIN league_members m2 ON m2.league_id = l.id
+               WHERE m.user_id = $1`, [uid]),
+    db.query('SELECT gameweek_id, transfers FROM gw_entries WHERE user_id = $1', [uid]),
+    F.gameweeks(),
+  ]);
+  const me = overall.find((r) => r.user_id === uid);
+  // My rank among a subset of managers (standings are already sorted; ties share a rank)
+  const rankIn = (keep) => {
+    const rows = overall.filter((r) => keep(r));
+    const i = rows.findIndex((r) => r.user_id === uid);
+    if (i < 0) return { rank: null, members: rows.length };
+    let first = i;
+    while (first > 0 && rows[first - 1].total === rows[i].total) first--;
+    return { rank: first + 1, members: rows.length };
+  };
+  const leagues = [{ key: 'overall', name: 'Overall', ...rankIn(() => true) }];
+  if (req.user.level) leagues.push({ key: `level:${req.user.level}`, name: req.user.level, ...rankIn((r) => r.level === req.user.level) });
+  const priv = new Map();
+  for (const r of memberQ.rows) {
+    if (!priv.has(r.id)) priv.set(r.id, { name: r.name, ids: new Set() });
+    priv.get(r.id).ids.add(r.user_id);
+  }
+  for (const [id, l] of priv) leagues.push({ key: String(id), name: l.name, ...rankIn((r) => l.ids.has(r.user_id)) });
+
+  const editSort = gws.next ? gws.next.sort : Infinity;
+  const picks = await F.picksAt(uid, editSort);
+  const prices = new Map((await F.allPlayers()).map((p) => [p.id, p.price]));
+  const value = picks.reduce((s, p) => s + (prices.get(p.player_id) || 0), 0);
+  res.json({
+    team_name: teamQ.rows[0]?.name || null,
+    manager: req.user.name, level: req.user.level,
+    points: { total: me?.total ?? 0, gw: me?.gw_points ?? null, rank: me?.rank ?? null, managers: overall.length },
+    leagues,
+    transfers: {
+      gameweek: gws.next ? (trQ.rows.find((e) => e.gameweek_id === gws.next.id)?.transfers || 0) : 0,
+      total: trQ.rows.reduce((s, e) => s + e.transfers, 0),
+    },
+    finance: { squad_value: value, bank: picks.length ? RULES.budget - value : RULES.budget },
+  });
 }));
 
 // League owner: issue a new code (old code and links stop working; members stay)
@@ -416,6 +535,20 @@ admin.post('/players', wrap(async (req, res) => {
   if (p.error) return bad(res, p.error);
   const { rows } = await db.query('INSERT INTO players (name, team_id, position, price, active) VALUES ($1,$2,$3,$4,$5) RETURNING *', [p.name, p.team_id, p.position, p.price, p.active]);
   res.json({ player: rows[0] });
+}));
+
+// Player photo upload (data URL, already resized in the browser) and removal
+admin.post('/players/:id/photo', wrap(async (req, res) => {
+  const ph = decodePhoto(req.body.photo);
+  if (ph.error) return bad(res, ph.error);
+  const { rows } = await db.query('UPDATE players SET photo = $2, photo_type = $3, photo_updated = now() WHERE id = $1 RETURNING id, name', [+req.params.id, ph.image, ph.type]);
+  if (!rows.length) return bad(res, 'Player not found.', 404);
+  res.json({ ok: true, player: rows[0] });
+}));
+
+admin.delete('/players/:id/photo', wrap(async (req, res) => {
+  await db.query('UPDATE players SET photo = NULL, photo_type = NULL, photo_updated = NULL WHERE id = $1', [+req.params.id]);
+  res.json({ ok: true });
 }));
 
 admin.put('/players/:id', wrap(async (req, res) => {

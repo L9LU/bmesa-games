@@ -158,3 +158,8 @@ CREATE TABLE IF NOT EXISTS spotlights (
   author_id INT REFERENCES users(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Player photos (media day): stored in the database because Vercel has no persistent disk
+ALTER TABLE players ADD COLUMN IF NOT EXISTS photo BYTEA;
+ALTER TABLE players ADD COLUMN IF NOT EXISTS photo_type TEXT;
+ALTER TABLE players ADD COLUMN IF NOT EXISTS photo_updated TIMESTAMPTZ;

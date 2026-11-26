@@ -63,7 +63,7 @@ export function Home() {
         {hub.medals.map((m) => {
           const t = hub.teams.find((x) => x.id === m.team_id);
           return (
-            <SpotlightCard key={m.team_id} className="crown-card" theme="light" spotlightColor="#f6d10f" intensity={0.35} spotlightSize={160} borderGlow={0.9}>
+            <SpotlightCard key={m.team_id} className="crown-card" theme="dark" spotlightColor="#f6d10f" intensity={0.35} spotlightSize={160} borderGlow={0.9}>
               <Link to="/teams" className="crown-team" title={t.name}>
                 <TeamLogo team={t} lg />
                 <b>{t.name}</b>

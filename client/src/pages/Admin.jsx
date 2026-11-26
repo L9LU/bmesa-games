@@ -360,12 +360,82 @@ export function News() {
 }
 
 // ---------- Players ----------
-function PlayerRow({ p, teams }) {
+/**
+ * Media-day bulk upload: pick many photos at once; each file is matched to a player by its file name.
+ * "Mishell.jpg" matches Mishell; add the class when names clash: "Adams Y3.jpg", "Y3 Adams.png", "Adams Year 3.jpg".
+ */
+const norm = (s) => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+function matchPlayer(fileName, players) {
+  const key = norm(fileName.replace(/\.[^.]+$/, ''));
+  const exact = players.filter((p) => norm(p.name) === key);
+  if (exact.length === 1) return { player: exact[0] };
+  const withTeam = players.filter((p) => [p.team_short, p.team].some((t) => key === norm(p.name) + norm(t) || key === norm(t) + norm(p.name)));
+  if (withTeam.length === 1) return { player: withTeam[0] };
+  if (exact.length > 1) return { error: `matches ${exact.length} players — add the class, e.g. "${exact[0].name} ${exact[0].team_short}"` };
+  return { error: 'no player with this name' };
+}
+
+function BulkPhotos({ players, onDone }) {
+  const [log, setLog] = useState([]);
+  const [busy, setBusy] = useState(false);
+  async function pick(e) {
+    const files = [...(e.target.files || [])];
+    e.target.value = '';
+    if (!files.length) return;
+    setBusy(true);
+    const out = [];
+    for (const f of files) {
+      const m = matchPlayer(f.name, players);
+      if (m.error) { out.push({ file: f.name, ok: false, msg: m.error }); setLog([...out]); continue; }
+      try {
+        await api(`/api/admin/players/${m.player.id}/photo`, { body: { photo: await resizePhoto(f, 700) } });
+        out.push({ file: f.name, ok: true, msg: `${m.player.name} (${m.player.team_short})` });
+      } catch (er) { out.push({ file: f.name, ok: false, msg: er.message }); }
+      setLog([...out]);
+    }
+    setBusy(false);
+    onDone();
+  }
+  const done = log.filter((l) => l.ok).length;
+  return (
+    <section className="card" style={{ marginBottom: 16 }}>
+      <div className="row spread">
+        <div><h3 style={{ margin: 0 }}>Media day photos</h3><p className="small muted" style={{ margin: '4px 0 0' }}>Choose many photos at once. Name each file after the player — <code>Mishell.jpg</code>, or <code>Adams Y3.jpg</code> when two players share a name. Portrait photos work best.</p></div>
+        <label className="btn primary">{busy ? `Uploading… ${log.length}` : 'Choose photos'}<input type="file" accept="image/*" multiple hidden disabled={busy} onChange={pick} /></label>
+      </div>
+      {log.length > 0 && (
+        <div className="bulk-log">
+          <p className="small"><b>{done}</b> uploaded{log.length - done ? <>, <b className="error">{log.length - done}</b> need attention</> : ''}.</p>
+          <ul>{log.map((l) => <li key={l.file} className={l.ok ? 'ok' : 'bad'}>{l.ok ? '✓' : '✗'} <code>{l.file}</code> → {l.msg}</li>)}</ul>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function PlayerRow({ p, teams, onPhoto }) {
   const run = useAction();
   const [v, setV] = useState({ name: p.name, team_id: p.team_id, position: p.position, price: (p.price / 10).toFixed(1), active: p.active });
   const set = (k) => (e) => setV({ ...v, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
+  async function upload(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (await run(async () => api(`/api/admin/players/${p.id}/photo`, { body: { photo: await resizePhoto(file, 700) } }), 'Photo saved')) onPhoto();
+  }
+  async function remove() {
+    if (!confirm(`Remove ${p.name}'s photo?`)) return;
+    if (await run(() => api(`/api/admin/players/${p.id}/photo`, { method: 'DELETE' }), 'Photo removed')) onPhoto();
+  }
   return (
     <tr>
+      <td>
+        <div className="photo-cell">
+          {p.photo_url ? <img src={p.photo_url} alt="" /> : <span className="photo-none" aria-hidden="true">—</span>}
+          <label className="btn sm">{p.photo_url ? 'Change' : 'Upload'}<input type="file" accept="image/*" hidden onChange={upload} /></label>
+          {p.photo_url && <button className="btn sm danger" onClick={remove} aria-label={`Remove ${p.name}'s photo`}>×</button>}
+        </div>
+      </td>
       <td><input value={v.name} onChange={set('name')} /></td>
       <td><select value={v.team_id} onChange={set('team_id')}>{teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></td>
       <td><select value={v.position} onChange={set('position')}>{['GK', 'DEF', 'MID', 'FWD'].map((x) => <option key={x}>{x}</option>)}</select></td>
@@ -420,6 +490,7 @@ export function Players() {
       <h1>Fantasy players</h1>
       <p className="muted">Add the men’s football squads. Price is in millions (e.g. 6.5). Untick “Available” to stop new managers picking a player.</p>
       <BudgetCheck players={b.players} rules={b.rules} />
+      <BulkPhotos players={b.players} onDone={reload} />
       <div className="grid g2">
         <section className="card">
           <h3>Add one player</h3>
@@ -443,8 +514,8 @@ export function Players() {
       <section className="card flush scroll-x" style={{ marginTop: 16 }}>
         <div className="card-h"><h3>{b.players.length} players</h3></div>
         <table className="t">
-          <thead><tr><th>Name</th><th>Team</th><th>Pos</th><th>Price</th><th>Available</th><th className="r">Pts</th><th /></tr></thead>
-          <tbody>{b.players.map((p) => <PlayerRow key={p.id} p={p} teams={teams} />)}</tbody>
+          <thead><tr><th>Photo</th><th>Name</th><th>Team</th><th>Pos</th><th>Price</th><th>Available</th><th className="r">Pts</th><th /></tr></thead>
+          <tbody>{b.players.map((p) => <PlayerRow key={`${p.id}-${p.photo_url}`} p={p} teams={teams} onPhoto={reload} />)}</tbody>
         </table>
       </section>
     </>

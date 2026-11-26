@@ -58,6 +58,7 @@ export function PlayerModal({ b, p, onClose }) {
       <div className="row" style={{ marginBottom: 12 }}>
         <span className={`pos-tag pos-${p.position}`}>{p.position}</span><b><TeamName team={playerTeam(p)} /></b>
         <span className="muted">{money(p.price)} · {p.total_points} pts · selected by {p.selected_by}%</span>
+        <Link className="btn sm" to={`/fantasy/player/${p.id}`} onClick={onClose}>Full profile →</Link>
       </div>
       {!data ? <Loading error={error} /> : data.matches.length === 0 ? <p className="muted">No matches played yet.</p> : (
         <table className="t">
@@ -97,16 +98,56 @@ function savedState(me) {
   return s;
 }
 
-export function PickTeam() {
+export function PickTeam({ mode = 'pick' }) {
   const { user, toast } = useApp();
   const { data: b, error, reload } = useBoot();
   if (!b) return <Loading error={error} />;
   if (!user) return <Landing b={b} />;
   if (!b.players.length) return <><h1>Fantasy football</h1><div className="card empty">Organisers haven’t added the football players yet. Check back soon.</div></>;
-  return <Picker b={b} reload={reload} toast={toast} />;
+  return <Picker b={b} reload={reload} toast={toast} mode={mode} />;
 }
 
-function Picker({ b, reload, toast }) {
+/** Transfers: same squad editor, with the player list instead of the manager panel. */
+export function Transfers() { return <PickTeam mode="transfers" />; }
+
+/** FPL-style sidebar: points & rankings, my leagues with my rank, transfers, finance. */
+function ManagerPanel({ stamp }) {
+  const { data: s, error } = useData('/api/fantasy/summary', { deps: [stamp] });
+  if (!s) return <aside className="card manager-panel"><Loading error={error} /></aside>;
+  const row = (k, v) => <div className="mp-row" key={k}><span>{k}</span><b className="num">{v}</b></div>;
+  return (
+    <aside className="card manager-panel">
+      <div className="mp-head">
+        <div className="mp-badge" aria-hidden="true">{(s.team_name || '?').slice(0, 1).toUpperCase()}</div>
+        <div><h2>{s.team_name || 'No team yet'}</h2><div className="muted small">{s.manager}{s.level ? ` · ${s.level}` : ''}</div></div>
+      </div>
+      <div className="mp-sec">
+        <div className="mp-sec-h"><h3>Points &amp; rankings</h3><Link className="btn sm" to="/fantasy/points">Gameweek history ›</Link></div>
+        {row('Overall points', s.points.total)}{row('Overall rank', s.points.rank ?? '—')}{row('Total managers', s.points.managers)}{row('Gameweek points', s.points.gw ?? '—')}
+      </div>
+      <div className="mp-sec">
+        <div className="mp-sec-h"><h3>Leagues</h3><Link className="btn sm" to="/fantasy/leagues">Create / join ›</Link></div>
+        {s.leagues.map((l) => (
+          <Link key={l.key} className="mp-league" to={`/fantasy/leagues/${encodeURIComponent(l.key)}`}>
+            <span className="mp-league__name">{l.name}<span className="muted small"> · {l.members}</span></span>
+            <b className="num">{l.rank ?? '—'}</b>
+          </Link>
+        ))}
+      </div>
+      <div className="mp-sec">
+        <div className="mp-sec-h"><h3>Transfers</h3><Link className="btn sm" to="/fantasy/transfers">Make transfers ›</Link></div>
+        {row('Gameweek transfers', s.transfers.gameweek)}{row('Total transfers', s.transfers.total)}
+      </div>
+      <div className="mp-sec">
+        <h3>Finance</h3>
+        {row('Squad value', money(s.finance.squad_value))}{row('In the bank', money(s.finance.bank))}
+      </div>
+    </aside>
+  );
+}
+
+function Picker({ b, reload, toast, mode = 'pick' }) {
+  const navigate = useNavigate();
   const R = b.rules;
   const gw = nextGw(b);
   const byId = useMemo(() => new Map(b.players.map((p) => [p.id, p])), [b]);
@@ -199,7 +240,11 @@ function Picker({ b, reload, toast }) {
 
   function clickSlot(slot) {
     if (swap) { if (slot !== swap && canSwap(swap, slot)) doSwap(swap, slot); else if (slot === swap) setSwap(null); return; }
-    if (!S.squad[slot]) { if (gw) setSel(sel === slot ? null : slot); return; }
+    if (!S.squad[slot]) {
+      if (mode === 'pick') { navigate('/fantasy/transfers'); return; } // squad changes happen on Transfers
+      if (gw) setSel(sel === slot ? null : slot);
+      return;
+    }
     setMenu(slot);
   }
 
@@ -326,7 +371,13 @@ function Picker({ b, reload, toast }) {
         </div>
       ) : <div className="deadline" style={{ marginBottom: 14 }}>All deadlines have passed. Your team is locked — see <Link to="/fantasy/points">Points</Link>.</div>}
 
-      <div className="pick-layout">
+      {mode === 'pick' && ids.length < R.squadSize && (
+        <div className="deadline" style={{ marginBottom: 14 }}>
+          Your squad has <b>{ids.length}/{R.squadSize}</b> players. <Link className="btn sm gold" to="/fantasy/transfers">Complete it on Transfers →</Link>
+        </div>
+      )}
+      <div className={`pick-layout ${mode === 'pick' ? 'pick-mode' : ''}`}>
+        {mode === 'pick' && <ManagerPanel stamp={b} />}
         <ClickSpark sparkColor="#f6d10f" sparkSize={10} sparkRadius={22} sparkCount={9} duration={450} glow={0.4}>
           {swap && <div className="deadline" style={{ marginBottom: 10, background: '#eef2ff', borderColor: '#c7d2fe' }}>Pick the player to swap with. <button className="btn sm" onClick={() => setSwap(null)}>Cancel</button></div>}
           <div className="pitch">
@@ -350,7 +401,7 @@ function Picker({ b, reload, toast }) {
           <p className="small muted">Squad of {R.squadSize}: 2 goalkeepers, at least 2 defenders, 2 midfielders and 2 forwards, plus 1 extra outfield player of any position. 7 start (keeper + 6 outfield), 2 on the bench. Max {R.maxPerTeam} from one level. Budget {money(R.budget)}. Tap a player to captain, substitute or transfer them.</p>
         </ClickSpark>
 
-        <div className="card flush">
+        {mode === 'transfers' && <div className="card flush">
           <div className="card-h"><h3>{sel ? (labels[sel] === 'ANY' ? 'Choose any outfield player' : `Choose a ${POS_NAME[labels[sel]].toLowerCase()}`) : 'Players'}</h3>{sel && <button className="btn sm" onClick={() => setSel(null)}>Show all</button>}</div>
           <div className="filters">
             <input type="search" placeholder="Search players" value={f.q} onChange={setFilter('q')} />
@@ -379,7 +430,7 @@ function Picker({ b, reload, toast }) {
               </tbody>
             </table>
           </div>
-        </div>
+        </div>}
       </div>
 
       {menuPlayer && (
@@ -392,7 +443,9 @@ function Picker({ b, reload, toast }) {
             </>}
             {gw && <>
               <button className="btn" onClick={() => menuAction(menu, 'sub')}>{isStarter(menu) ? 'Move to bench' : 'Bring onto pitch'}</button>
-              <button className="btn danger" onClick={() => menuAction(menu, 'out')}>Transfer out</button>
+              {mode === 'pick'
+                ? <button className="btn danger" onClick={() => navigate('/fantasy/transfers')}>Transfer (go to Transfers)</button>
+                : <button className="btn danger" onClick={() => menuAction(menu, 'out')}>Transfer out</button>}
             </>}
             <button className="btn" onClick={() => menuAction(menu, 'info')}>View stats</button>
           </div>
@@ -671,7 +724,7 @@ export function Leagues() {
           </>}
         </section>
         {user ? (
-          <BorderGlow className="leagues-glow" backgroundColor="#ffffff" borderRadius={12} glowRadius={28} glowColor="51 93 55"
+          <BorderGlow className="leagues-glow" backgroundColor="#0f1640" borderRadius={12} glowRadius={28} glowColor="51 93 55"
             colors={['#f6d10f', '#1f33b0', '#b3262c']} edgeSensitivity={25} fillOpacity={0.25}>
           <section className="leagues-card">
             <h3>Private leagues</h3>
@@ -690,6 +743,169 @@ export function Leagues() {
         ) : <section className="card"><p><Link to="/login">Log in</Link> to create or join private leagues.</p></section>}
       </Reveal>
     </>
+  );
+}
+
+// ======================================================================
+// Player profile (FPL-app style): hero, price, ranks, form & fixtures, Matches / Stats / History
+// ======================================================================
+export function PlayerPage() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const { data, error } = useData(`/api/fantasy/player/${id}`, { deps: [id] });
+  const { data: hub } = useData('/api/hub');
+  const { data: b } = useBoot();
+  const [tab, setTab] = useState('matches');
+  const [sub, setSub] = useState('results');
+  if (error) return <div className="card empty">{error} <Link to="/fantasy/stats">All players</Link></div>;
+  if (!data || !hub || !b) return <Loading />;
+
+  const p = data.player;
+  const team = (tid) => hub.teams.find((t) => t.id === tid);
+  const opp = (x) => { const t = team(x.opp_id); return { short: t?.short || x.opp_label || 'TBD', team: t }; };
+  const gwNo = (gid) => { const i = b.gameweeks.findIndex((g) => g.id === gid); return i >= 0 ? i + 1 : '–'; };
+  const parts = p.name.trim().split(/\s+/);
+  const last = parts.length > 1 ? parts.pop() : p.name;
+  const first = parts.join(' ');
+  const posName = POS_NAME[p.position];
+  const recent = data.results.slice(0, 3).reverse();
+  const next = data.fixtures.slice(0, 3);
+  const score = (r) => { const mine = r.home ? r.home_score : r.away_score, theirs = r.home ? r.away_score : r.home_score; return { text: `${r.home_score}–${r.away_score}`, cls: mine > theirs ? 'win' : mine < theirs ? 'loss' : 'draw' }; };
+  const S = data.stats;
+
+  return (
+    <div className="player-page">
+      <section className="player-hero" style={{ '--team': p.team_color }}>
+        <button className="back-btn" onClick={() => navigate(-1)} aria-label="Back">←</button>
+        <div className="player-hero__photo">
+          {p.photo_url ? <img src={p.photo_url} alt={p.name} /> : <div className="player-hero__kit"><PlayerShirt p={p} /></div>}
+        </div>
+        <div className="player-hero__info">
+          <div className="cat">{posName}</div>
+          {first && <div className="player-first">{first}</div>}
+          <h1 className="player-last">{last}</h1>
+          <div className="row" style={{ gap: 8 }}><TeamLogo team={team(p.team_id)} /><span>{p.team}</span></div>
+        </div>
+      </section>
+
+      <section className="card player-price">
+        <span>Price: <b>{money(p.price)}</b></span>
+        {!p.active && <span className="pill live">Unavailable</span>}
+        <span className="muted small">{p.total_points} pts this season</span>
+      </section>
+
+      <section className="card player-ranks">
+        {[['Pts/Match', data.ppm.toFixed(1), data.ranks.ppm], ['Form', data.form.toFixed(1), data.ranks.form], ['Selected', `${p.selected_by}%`, data.ranks.selected]].map(([l, v, r]) => (
+          <div key={l}><span className="muted small">{l}</span><b className="num">{v}</b><span className="muted small">{r} of {data.ranks.of}</span></div>
+        ))}
+        <div className="player-ranks__cap muted small">Ranking for {posName.toLowerCase()}s</div>
+      </section>
+
+      <section className="card player-strip">
+        <div>
+          <div className="strip-h">Form</div>
+          <div className="strip-row">
+            {recent.length ? recent.map((r) => (
+              <div key={r.id} className="strip-cell">
+                <span className="small muted">GW{gwNo(r.gameweek_id)}</span>
+                <TeamLogo team={opp(r).team} />
+                <span className="small">{opp(r).short} ({r.home ? 'H' : 'A'})</span>
+                <b className="small">{r.played ? `${r.points} pts` : 'DNP'}</b>
+              </div>
+            )) : <span className="muted small">No matches yet</span>}
+          </div>
+        </div>
+        <div>
+          <div className="strip-h">Fixtures</div>
+          <div className="strip-row">
+            {next.length ? next.map((f) => (
+              <div key={f.id} className="strip-cell">
+                <span className="small muted">GW{gwNo(f.gameweek_id)}</span>
+                <TeamLogo team={opp(f).team} />
+                <span className="small">{opp(f).short} ({f.home ? 'H' : 'A'})</span>
+                <span className="fx-chip">{fmtShort(f.starts_at).split(',')[0]}</span>
+              </div>
+            )) : <span className="muted small">No more fixtures</span>}
+          </div>
+        </div>
+      </section>
+
+      <div className="tabs" role="tablist">
+        {[['matches', 'Matches'], ['stats', 'Stats'], ['history', 'History']].map(([k, l]) => (
+          <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>
+        ))}
+      </div>
+
+      {tab === 'matches' && (
+        <section className="card flush">
+          <div className="seg">
+            <button className={sub === 'results' ? 'on' : ''} onClick={() => setSub('results')}>Results</button>
+            <button className={sub === 'fixtures' ? 'on' : ''} onClick={() => setSub('fixtures')}>Fixtures</button>
+          </div>
+          {sub === 'results' ? (
+            <table className="t">
+              <thead><tr><th>GW</th><th>Opponent</th><th>Result</th><th className="r">Points</th></tr></thead>
+              <tbody>
+                {data.results.length === 0 && <tr><td colSpan={4} className="empty">No results yet.</td></tr>}
+                {data.results.map((r) => (
+                  <tr key={r.id}>
+                    <td className="num">{gwNo(r.gameweek_id)}</td>
+                    <td><span className="row" style={{ gap: 6, flexWrap: 'nowrap' }}><TeamLogo team={opp(r).team} />{opp(r).short} ({r.home ? 'H' : 'A'})</span></td>
+                    <td><span className={`result ${score(r).cls}`}>{score(r).text}</span></td>
+                    <td className="r num"><b>{r.played ? `${r.points} pts` : 'DNP'}</b></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <table className="t">
+              <thead><tr><th>Date</th><th>GW</th><th>Opponent</th><th>Round</th></tr></thead>
+              <tbody>
+                {data.fixtures.length === 0 && <tr><td colSpan={4} className="empty">No more fixtures.</td></tr>}
+                {data.fixtures.map((f) => (
+                  <tr key={f.id}>
+                    <td className="small">{fmtShort(f.starts_at)}</td>
+                    <td className="num">{gwNo(f.gameweek_id)}</td>
+                    <td><span className="row" style={{ gap: 6, flexWrap: 'nowrap' }}><TeamLogo team={opp(f).team} />{opp(f).short} ({f.home ? 'H' : 'A'})</span></td>
+                    <td className="small muted">{f.round}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+      )}
+
+      {tab === 'stats' && (
+        <>
+          <section className="card flush">
+            <div className="card-h"><h3>Fantasy stats</h3></div>
+            <table className="t kv-table"><tbody>
+              {[['Total points', S.total_points], ['Form', data.form.toFixed(1)], ['Points per match', data.ppm.toFixed(1)], ['MVP awards', S.mvp], ['Selected by', `${p.selected_by}%`], ['Price', money(p.price)]].map(([k, v]) => <tr key={k}><td>{k}</td><td className="r num"><b>{v}</b></td></tr>)}
+            </tbody></table>
+          </section>
+          <section className="card flush" style={{ marginTop: 12 }}>
+            <div className="card-h"><h3>Season stats</h3></div>
+            <table className="t kv-table"><tbody>
+              {[['Starts', S.starts], ['Goals', S.goals], ['Assists', S.assists], ['Clean sheets', S.clean_sheets], ['Goals conceded', S.goals_conceded],
+                ...(p.position === 'GK' ? [['Saves', S.saves], ['Penalties saved', S.pen_saved]] : []),
+                ['Penalties missed', S.pen_missed], ['Own goals', S.own_goals], ['Yellow cards', S.yellow], ['Red cards', S.red]].map(([k, v]) => <tr key={k}><td>{k}</td><td className="r num"><b>{v}</b></td></tr>)}
+            </tbody></table>
+          </section>
+        </>
+      )}
+
+      {tab === 'history' && (
+        <section className="card flush">
+          <div className="card-h"><h3>Seasons</h3></div>
+          <table className="t">
+            <thead><tr><th>Season</th><th className="r">Pts</th><th className="r">ST</th><th className="r">GS</th><th className="r">A</th><th className="r">CS</th></tr></thead>
+            <tbody><tr><td>2026/27</td><td className="r num">{S.total_points}</td><td className="r num">{S.starts}</td><td className="r num">{S.goals}</td><td className="r num">{S.assists}</td><td className="r num">{S.clean_sheets}</td></tr></tbody>
+          </table>
+          <p className="muted small" style={{ padding: '10px 14px 14px', margin: 0 }}>BMESA Fantasy started this season — past seasons will show here from next year.</p>
+        </section>
+      )}
+    </div>
   );
 }
 
@@ -723,7 +939,7 @@ export function Stats() {
               {list.map((p) => (
                 <tr key={p.id}>
                   <td><span className={`pos-tag pos-${p.position}`}>{p.position}</span></td>
-                  <td><a href="#" onClick={(e) => { e.preventDefault(); setInfo(p); }}>{p.name}</a>{!p.active && <> <span className="pill">unavailable</span></>}</td>
+                  <td><Link to={`/fantasy/player/${p.id}`}>{p.name}</Link>{!p.active && <> <span className="pill">unavailable</span></>}</td>
                   <td><TeamName team={playerTeam(p)} /></td>
                   <td className="r num">{money(p.price)}</td><td className="r num">{p.selected_by}%</td><td className="r num"><b>{p.total_points}</b></td>
                 </tr>

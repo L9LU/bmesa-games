@@ -7,9 +7,38 @@ import { api, fmtTime, teamSide } from './lib.js';
 // ---------- Layout ----------
 const SUB = {
   hub: [['/', 'Home'], ['/schedule', 'Schedule & results'], ['/medals', 'Medals table'], ['/events', 'Events'], ['/teams', 'Teams']],
-  fantasy: [['/fantasy', 'Pick team'], ['/fantasy/points', 'Points'], ['/fantasy/leagues', 'Leagues'], ['/fantasy/stats', 'Player stats'], ['/fantasy/fixtures', 'Fixtures'], ['/fantasy/rules', 'Rules']],
+  fantasy: [['/fantasy', 'Pick team'], ['/fantasy/transfers', 'Transfers'], ['/fantasy/points', 'Points'], ['/fantasy/leagues', 'Leagues'], ['/fantasy/stats', 'Player stats'], ['/fantasy/fixtures', 'Fixtures'], ['/fantasy/rules', 'Rules']],
   admin: [['/admin', 'Results'], ['/admin/medals', 'Medals'], ['/admin/news', 'Updates'], ['/admin/players', 'Players'], ['/admin/teams', 'Teams & kits'], ['/admin/gameweeks', 'Gameweeks'], ['/admin/users', 'Users']],
 };
+
+// ---------- Phone bottom tab bar (shown under 700px, like a sports app) ----------
+const ICONS = {
+  home: 'M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z',
+  results: 'M4 5h16v14H4zM4 9h16M9 5v14',
+  fantasy: 'M8 3l-5 3 2 5 3-1v11h8V10l3 1 2-5-5-3c-.5 2-2 3-4 3s-3.5-1-4-3z',
+  leagues: 'M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 1-3 3',
+  medals: 'M12 14a5 5 0 1 0 0-10 5 5 0 0 0 0 10zM9 13l-2 8 5-3 5 3-2-8',
+  admin: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6a7 7 0 0 0 0 2.4l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z',
+};
+function BottomNav({ pathname, isStaff }) {
+  const items = [
+    ['/', 'Home', 'home', (p) => p === '/'],
+    ['/schedule', 'Results', 'results', (p) => p.startsWith('/schedule') || p.startsWith('/event')],
+    ['/fantasy', 'Fantasy', 'fantasy', (p) => p.startsWith('/fantasy') && !p.startsWith('/fantasy/leagues')],
+    ['/fantasy/leagues', 'Leagues', 'leagues', (p) => p.startsWith('/fantasy/leagues') || p.startsWith('/fantasy/join')],
+    isStaff ? ['/admin', 'Admin', 'admin', (p) => p.startsWith('/admin')] : ['/medals', 'Medals', 'medals', (p) => p.startsWith('/medals') || p.startsWith('/teams')],
+  ];
+  return (
+    <nav className="bottom-nav" aria-label="Main">
+      {items.map(([to, label, icon, on]) => (
+        <Link key={to} to={to} className={on(pathname) ? 'on' : ''}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d={ICONS[icon]} /></svg>
+          <span>{label}</span>
+        </Link>
+      ))}
+    </nav>
+  );
+}
 
 export function Layout() {
   const { user, setUser, isStaff, toast } = useApp();
@@ -17,7 +46,8 @@ export function Layout() {
   const navigate = useNavigate();
   const section = pathname.startsWith('/admin') ? 'admin' : pathname.startsWith('/fantasy') || ['/login', '/signup'].includes(pathname) ? 'fantasy' : 'hub';
   const items = SUB[section].filter(([to]) => to !== '/admin/users' || user?.role === 'admin');
-  const active = items.filter(([to]) => pathname === to || pathname.startsWith(to + '/')).sort((a, b) => b[0].length - a[0].length)[0]?.[0];
+  const here = pathname.startsWith('/fantasy/player/') ? '/fantasy/stats' : pathname; // player pages belong under Player stats
+  const active = items.filter(([to]) => here === to || here.startsWith(to + '/')).sort((a, b) => b[0].length - a[0].length)[0]?.[0];
 
   useSmoothScroll();
   useEffect(() => { scrollToTop(); }, [pathname]);
@@ -52,6 +82,7 @@ export function Layout() {
         </nav>
       </header>
       <main className="wrap"><Suspense fallback={<Loading />}><Outlet /></Suspense></main>
+      <BottomNav pathname={pathname} isStaff={isStaff} />
       <footer className="wrap foot">BMESA Games · Biomedical Engineering Department · 4–11 December 2026 · All times West Africa Time (WAT)</footer>
     </>
   );
